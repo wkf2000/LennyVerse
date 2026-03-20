@@ -17,6 +17,15 @@ Transform passive consumption into an **interactive knowledge system** that make
 ## Contest Fit
 Lenny's 2026 contest (winner April 15th) rewards creative, novel uses of this data. The prior standout was LennyRPG — a gamified approach. LennyVerse must be equally inventive but occupy a different space: **the definitive way to explore, learn from, and apply product wisdom at scale.** It must clearly differentiate from Lennybot (Q&A chatbot) by being visual, agentic, and pedagogical.
 
+## Dataset Profile
+* **638 documents**: 349 newsletters + 289 podcast transcripts
+* **~5.4 million words**, avg ~8,500 words/document
+* **Date span**: June 2019 – March 2026
+* **289 named guests** (Marc Andreessen, Brian Halligan, etc.)
+* **17 tags**: design (608), leadership (491), strategy (364), growth (289), startups (264), career (245), product-management (190), ai (125), analytics (106), etc.
+* **Format**: Markdown with YAML frontmatter (title, date, tags, word_count, guest, description)
+* **Access**: Local filesystem + MCP server
+
 # 2. Target Users
 
 ## Primary Personas
