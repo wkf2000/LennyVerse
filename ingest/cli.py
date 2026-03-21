@@ -1,9 +1,21 @@
 from __future__ import annotations
 
 import argparse
+import json
+import logging
+import sys
 from pathlib import Path
 
 from ingest.pipeline import STAGES, run_pipeline
+
+
+def _configure_logging() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(message)s",
+        stream=sys.stderr,
+        force=True,
+    )
 
 
 def _parse_stages(value: str) -> tuple[str, ...]:
@@ -57,6 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    _configure_logging()
     parser = build_parser()
     args = parser.parse_args()
 
@@ -69,7 +82,7 @@ def main() -> int:
             stages=_parse_stages(args.stages),
             force=args.force,
         )
-        print(result)
+        print(json.dumps(result, indent=2, default=str))
         return 0
 
     if args.command == "backfill":
@@ -80,7 +93,7 @@ def main() -> int:
             source_filter=args.source,
             force=args.force,
         )
-        print(result)
+        print(json.dumps(result, indent=2, default=str))
         return 0
 
     if args.command == "rebuild-graph":

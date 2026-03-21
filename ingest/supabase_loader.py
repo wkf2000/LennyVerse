@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import Any
 
 from supabase import Client, create_client
+
+logger = logging.getLogger(__name__)
 
 
 def _read_dotenv(dotenv_path: Path) -> dict[str, str]:
@@ -75,9 +78,17 @@ def load_documents_and_chunks(
     chunk_rows = [{k: v for k, v in row.items() if k in chunk_fields} for row in chunks]
 
     if document_rows:
+        logger.info("  upserting %d document row(s)", len(document_rows))
         supabase.table("documents").upsert(document_rows, on_conflict="id").execute()
     if chunk_rows:
-        for page in _chunked(chunk_rows, batch_size):
+        batches = _chunked(chunk_rows, batch_size)
+        for batch_index, page in enumerate(batches, start=1):
+            logger.info(
+                "  chunks batch %d/%d (%d row(s))",
+                batch_index,
+                len(batches),
+                len(page),
+            )
             sanitized = [{k: v for k, v in row.items() if k in chunk_fields} for row in page]
             supabase.table("chunks").upsert(sanitized, on_conflict="id").execute()
 

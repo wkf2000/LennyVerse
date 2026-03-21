@@ -1,23 +1,22 @@
 from __future__ import annotations
 
+import logging
 import os
 
+from dotenv import load_dotenv
 from langchain_ollama import OllamaEmbeddings
+
+load_dotenv()
 
 
 def _load_embeddings() -> OllamaEmbeddings:
     base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     model = os.getenv("EMBEDDING_MODEL", "qwen3-embedding:0.6b")
-    dim_raw = os.getenv("EMBEDDING_DIMENSION", "1024")
-    try:
-        dimensions = int(dim_raw)
-    except ValueError as e:
-        raise RuntimeError(f"Invalid EMBEDDING_DIMENSION: {dim_raw!r}") from e
 
+    logging.info(f"Loading embeddings from {base_url} with model {model}")
     return OllamaEmbeddings(
         model=model,
         base_url=base_url,
-        dimensions=dimensions,
     )
 
 
