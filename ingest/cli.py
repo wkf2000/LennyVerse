@@ -5,6 +5,7 @@ import json
 import logging
 import sys
 from pathlib import Path
+from typing import Any
 
 from ingest.neo4j_projector import project_to_neo4j
 from ingest.pipeline import STAGES, run_pipeline
@@ -25,6 +26,15 @@ def _configure_logging() -> None:
 def _parse_stages(value: str) -> tuple[str, ...]:
     stages = tuple(stage.strip() for stage in value.split(",") if stage.strip())
     return stages or STAGES
+
+
+def _run_pipeline_for_cli(*, failure_log_label: str, **kwargs: Any) -> tuple[int, dict[str, Any] | None]:
+    """Run the ingestion pipeline; on failure log one traceback here and return exit code 1."""
+    try:
+        return 0, run_pipeline(**kwargs)
+    except Exception:
+        logger.exception("%s failed", failure_log_label)
+        return 1, None
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -84,7 +94,8 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.command == "run":
-        result = run_pipeline(
+        code, result = _run_pipeline_for_cli(
+            failure_log_label="Run pipeline",
             input_dir=Path(args.input),
             output_dir=Path(args.output),
             since=args.since,
@@ -92,21 +103,22 @@ def main() -> int:
             stages=_parse_stages(args.stages),
             force=args.force,
         )
+        if code != 0:
+            return code
         print(json.dumps(result, indent=2, default=str))
         return 0
 
     if args.command == "backfill":
-        try:
-            result = run_pipeline(
-                input_dir=Path(args.input),
-                output_dir=Path(args.output),
-                stages=_parse_stages(args.stages),
-                source_filter=args.source,
-                force=args.force,
-            )
-        except Exception:
-            logger.exception("Backfill pipeline failed")
-            return 1
+        code, result = _run_pipeline_for_cli(
+            failure_log_label="Backfill pipeline",
+            input_dir=Path(args.input),
+            output_dir=Path(args.output),
+            stages=_parse_stages(args.stages),
+            source_filter=args.source,
+            force=args.force,
+        )
+        if code != 0:
+            return code
         print(json.dumps(result, indent=2, default=str))
         return 0
 

@@ -637,7 +637,7 @@ def run_pipeline(
             }
             if exc.__cause__ is not None:
                 run_payload["projection_error"]["cause"] = str(exc.__cause__)
-            logger.exception("Neo4j projection failed")
+            logger.error("Neo4j projection failed (%s): %s", type(exc).__name__, exc)
             logger.info("Writing artifacts to %s (projection failed; checkpoint unchanged)", output_dir)
             _write_json(output_dir / "documents.json", documents_payload)
             _write_json(output_dir / "chunks.json", chunks_payload)

@@ -149,6 +149,95 @@ def test_backfill_exits_nonzero_on_projection_failure(
     assert rc == 1
 
 
+def test_run_exits_nonzero_on_projection_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    """Run must return exit code 1 when the pipeline raises (aligned with backfill)."""
+    input_dir = tmp_path / "inputs"
+    output_dir = tmp_path / "out"
+    input_dir.mkdir()
+    (input_dir / "post.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "source_type: newsletter",
+                "source_slug: run-proj-fail",
+                "title: Run",
+                "published_at: 2026-03-20T00:00:00+00:00",
+                "description: x",
+                "---",
+                "hello world " * 20,
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "ingest",
+            "run",
+            "--input",
+            str(input_dir),
+            "--output",
+            str(output_dir),
+            "--stages",
+            "parse,chunk,project",
+        ],
+    )
+    with patch("ingest.pipeline.project_to_neo4j", side_effect=RuntimeError("projection failed")):
+        rc = cli.main()
+
+    assert rc == 1
+
+
+def test_cli_pipeline_projection_failure_logs_one_traceback(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """CLI owns stack traces; pipeline projection must not emit a second exception traceback."""
+    input_dir = tmp_path / "inputs"
+    output_dir = tmp_path / "out"
+    input_dir.mkdir()
+    (input_dir / "post.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "source_type: newsletter",
+                "source_slug: tb-once",
+                "title: TB",
+                "published_at: 2026-03-20T00:00:00+00:00",
+                "description: x",
+                "---",
+                "hello world " * 20,
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "ingest",
+            "run",
+            "--input",
+            str(input_dir),
+            "--output",
+            str(output_dir),
+            "--stages",
+            "parse,chunk,project",
+        ],
+    )
+    with patch("ingest.pipeline.project_to_neo4j", side_effect=RuntimeError("projection failed")):
+        rc = cli.main()
+
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert err.count("Traceback (most recent call last)") == 1
+
+
 def _rich_rebuild_payload() -> ProjectionPayload:
     return {
         "documents": [
