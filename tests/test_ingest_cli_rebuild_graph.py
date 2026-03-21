@@ -333,10 +333,11 @@ def test_rebuild_graph_cli_clear_first_removes_stale_in_scope_graph(
     assert ("Tag", "tag:orphan") not in emu.nodes
 
 
-def test_rebuild_graph_cli_graph_identity_matches_canonical_payload(
+def test_rebuild_graph_cli_identity_sets_match_canonical_payload(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    """rebuild-graph: emulated graph node/rel identity_sets match canonical projection input."""
     import ingest.neo4j_projector as np
 
     monkeypatch.setenv("NEO4J_PROJECTION_BATCH_SIZE", "50")

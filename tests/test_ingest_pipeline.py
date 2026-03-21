@@ -369,3 +369,25 @@ def test_project_stage_failure_raises_and_preserves_checkpoint(tmp_path: Path) -
     assert "projection_error" in last_run
     assert last_run["projection_error"]["type"] == "RuntimeError"
     assert "refused" in last_run["projection_error"]["message"]
+
+
+def test_identity_sets_projection_error_on_project_failure(tmp_path: Path) -> None:
+    """On project stage failure, last_run records projection_error and does not claim projection_result."""
+    input_dir = tmp_path / "inputs"
+    output_dir = tmp_path / "out"
+    input_dir.mkdir()
+    _write_fixture(input_dir / "post.md", body_word_count=40)
+
+    with patch("ingest.pipeline.project_to_neo4j", side_effect=RuntimeError("neo4j unavailable")):
+        with pytest.raises(RuntimeError, match="neo4j unavailable"):
+            run_pipeline(
+                input_dir=input_dir,
+                output_dir=output_dir,
+                stages=("parse", "chunk", "project"),
+            )
+
+    last_run = json.loads((output_dir / "last_run.json").read_text(encoding="utf-8"))
+    assert "projection_error" in last_run
+    assert "projection_result" not in last_run
+    assert last_run["projection_error"]["type"] == "RuntimeError"
+    assert "unavailable" in last_run["projection_error"]["message"]
