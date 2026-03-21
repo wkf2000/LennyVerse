@@ -96,13 +96,13 @@ Ingestion is local/manual only. No CI/CD ingestion path is required.
 
 ## CLI shape
 
-- `python -m ingest run --input data/raw --since <date> --limit <n> --stages parse,chunk,embed,extract,load,project`
+- `python -m ingest run --input data/inputs --since <date> --limit <n> --stages parse,chunk,embed,extract,load,project`
 - `python -m ingest backfill --source newsletter|podcast`
 - `python -m ingest rebuild-graph`
 
 ## Stage flow
 
-1. Parse markdown + YAML frontmatter; normalize metadata and compute checksum.
+1. Parse markdown frontmatter; normalize metadata and compute checksum.
 2. Chunk deterministically with stable chunk IDs.
 3. Embed chunks (skip unchanged content by hash/checksum).
 4. Extract concepts/framework mentions with confidence and evidence.
@@ -181,6 +181,7 @@ Ingestion is local/manual only. No CI/CD ingestion path is required.
 ## 6) Infrastructure and Cloud Services
 
 All runtime services are self-hosted with Docker, except Supabase managed free tier.
+Data ingestion runs on local/dev computer only, no Docker no cloud.
 
 ### Data plane
 
@@ -195,7 +196,6 @@ All runtime services are self-hosted with Docker, except Supabase managed free t
 ### AI/embedding plane
 
 - external embedding API for MVP speed (Google Gemini embedding model)
-- implement a provider interface in ingestion code for future swap without schema change
 
 ### Ingestion plane
 
