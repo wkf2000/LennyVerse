@@ -8,7 +8,8 @@ version = "0.1.0"
 description = "Local manual ingestion pipeline for LennyVerse foundation data."
 requires-python = ">=3.11"
 dependencies = [
-    "google-genai>=1.68.0",
+    "langchain-text-splitters>=0.3.0",
+    "langchain-ollama>=0.3.0",
     "supabase>=2.28.3",
 ]
 
