@@ -13,6 +13,7 @@ from langchain_text_splitters import MarkdownTextSplitter
 
 from ingest.embedder import embed_batch_size, embed_texts
 from ingest.extractor import extract_chunk_signals
+from ingest.neo4j_projector import ProjectionPayload, project_to_neo4j
 from ingest.supabase_loader import load_documents_and_chunks
 
 STAGES = ("parse", "chunk", "embed", "extract", "load", "project")
@@ -612,6 +613,38 @@ def run_pipeline(
         logger.info("Load finished: %s", run_payload["load_result"])
     elif "load" in stages:
         logger.info("Load stage skipped — no documents or chunks to upsert")
+
+    if "project" in stages:
+        projection_payload: ProjectionPayload = {
+            "documents": documents_payload,
+            "chunks": chunks_payload,
+            "guests": extraction_payload["guests"],
+            "tags": extraction_payload["tags"],
+            "concepts": extraction_payload["concepts"],
+            "frameworks": extraction_payload["frameworks"],
+            "document_guests": extraction_payload["document_guests"],
+            "document_tags": extraction_payload["document_tags"],
+            "chunk_concepts": extraction_payload["chunk_concepts"],
+            "chunk_frameworks": extraction_payload["chunk_frameworks"],
+        }
+        try:
+            run_payload["projection_result"] = project_to_neo4j(projection_payload, clear_first=False)
+            logger.info("Projection finished: %s", run_payload["projection_result"])
+        except Exception as exc:
+            run_payload["projection_error"] = {
+                "type": type(exc).__name__,
+                "message": str(exc),
+            }
+            if exc.__cause__ is not None:
+                run_payload["projection_error"]["cause"] = str(exc.__cause__)
+            logger.exception("Neo4j projection failed")
+            logger.info("Writing artifacts to %s (projection failed; checkpoint unchanged)", output_dir)
+            _write_json(output_dir / "documents.json", documents_payload)
+            _write_json(output_dir / "chunks.json", chunks_payload)
+            _write_json(output_dir / "extractions.json", extraction_payload)
+            _write_json(output_dir / "last_run.json", run_payload)
+            _write_json(checkpoint_path, state)
+            raise
 
     state["documents"].update(pending_state_updates)
 

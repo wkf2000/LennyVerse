@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from ingest.extractor import ChunkExtractionResult
 from ingest.pipeline import (
     build_chunks,
@@ -303,3 +305,67 @@ def test_extract_load_rerun_is_idempotent(tmp_path: Path) -> None:
     assert first["counts"]["processed_documents"] == 1
     assert second["counts"]["processed_documents"] == 0
     assert fake_load.call_count == 1
+
+
+def test_project_stage_success_adds_projection_result(tmp_path: Path) -> None:
+    input_dir = tmp_path / "inputs"
+    output_dir = tmp_path / "out"
+    input_dir.mkdir()
+    _write_fixture(input_dir / "post.md", body_word_count=40)
+
+    fake_projection = {"documents": 1, "chunks": 2, "elapsed_ms": 10}
+
+    with patch("ingest.pipeline.project_to_neo4j", return_value=fake_projection) as mock_project:
+        run = run_pipeline(
+            input_dir=input_dir,
+            output_dir=output_dir,
+            stages=("parse", "chunk", "project"),
+        )
+
+    assert run["projection_result"] == fake_projection
+    mock_project.assert_called_once()
+    assert mock_project.call_args.kwargs.get("clear_first") is False
+    last_run = json.loads((output_dir / "last_run.json").read_text(encoding="utf-8"))
+    assert last_run["projection_result"] == fake_projection
+
+
+def test_project_stage_failure_raises_and_preserves_checkpoint(tmp_path: Path) -> None:
+    input_dir = tmp_path / "inputs"
+    output_dir = tmp_path / "out"
+    input_dir.mkdir()
+    post = input_dir / "post.md"
+    _write_fixture(post, body_word_count=40)
+
+    with patch("ingest.pipeline.project_to_neo4j", return_value={"ok": 1}):
+        run_pipeline(
+            input_dir=input_dir,
+            output_dir=output_dir,
+            stages=("parse", "chunk", "project"),
+        )
+
+    checkpoint_after_ok = json.loads((output_dir / "checkpoint_state.json").read_text(encoding="utf-8"))
+    checksum_before = checkpoint_after_ok["documents"]["lenny-test-post"]["checksum"]
+
+    post.write_text(
+        post.read_text(encoding="utf-8").replace("w39", "w39-edited"),
+        encoding="utf-8",
+    )
+
+    with patch(
+        "ingest.pipeline.project_to_neo4j",
+        side_effect=RuntimeError("neo4j connection refused"),
+    ):
+        with pytest.raises(RuntimeError, match="neo4j connection refused"):
+            run_pipeline(
+                input_dir=input_dir,
+                output_dir=output_dir,
+                stages=("parse", "chunk", "project"),
+            )
+
+    checkpoint_after_fail = json.loads((output_dir / "checkpoint_state.json").read_text(encoding="utf-8"))
+    assert checkpoint_after_fail["documents"]["lenny-test-post"]["checksum"] == checksum_before
+
+    last_run = json.loads((output_dir / "last_run.json").read_text(encoding="utf-8"))
+    assert "projection_error" in last_run
+    assert last_run["projection_error"]["type"] == "RuntimeError"
+    assert "refused" in last_run["projection_error"]["message"]
