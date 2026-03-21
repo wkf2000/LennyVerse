@@ -149,11 +149,12 @@ def test_backfill_exits_nonzero_on_projection_failure(
     assert rc == 1
 
 
-def test_run_exits_nonzero_on_projection_failure(
+def _assert_cli_run_exits_nonzero_on_projection_failure(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
+    *,
+    source_slug: str = "run-proj-fail",
 ) -> None:
-    """Run must return exit code 1 when the pipeline raises (aligned with backfill)."""
     input_dir = tmp_path / "inputs"
     output_dir = tmp_path / "out"
     input_dir.mkdir()
@@ -162,7 +163,7 @@ def test_run_exits_nonzero_on_projection_failure(
             [
                 "---",
                 "source_type: newsletter",
-                "source_slug: run-proj-fail",
+                f"source_slug: {source_slug}",
                 "title: Run",
                 "published_at: 2026-03-20T00:00:00+00:00",
                 "description: x",
@@ -190,6 +191,24 @@ def test_run_exits_nonzero_on_projection_failure(
         rc = cli.main()
 
     assert rc == 1
+
+
+def test_run_exits_nonzero_on_projection_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    """Run must return exit code 1 when the pipeline raises (aligned with backfill)."""
+    _assert_cli_run_exits_nonzero_on_projection_failure(monkeypatch, tmp_path)
+
+
+def test_identity_sets_run_exits_nonzero_on_projection_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    """Task 6 -k identity_sets: ``run`` exits non-zero when projection fails (selector alias)."""
+    _assert_cli_run_exits_nonzero_on_projection_failure(
+        monkeypatch, tmp_path, source_slug="run-proj-fail-identity-sets"
+    )
 
 
 def test_cli_pipeline_projection_failure_logs_one_traceback(

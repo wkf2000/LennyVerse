@@ -681,10 +681,10 @@ def test_project_clear_first_removes_stale_in_scope_nodes_and_edges(
     assert ("Tag", "tag:live") in emu.nodes
 
 
-def test_projected_graph_identity_matches_canonical_projection_input(
+def test_projected_graph_identity_sets_match_canonical_projection_input(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """After full project, in-memory graph keys match canonical node/rel identity from payload."""
+    """After full project, in-memory graph keys match canonical node/rel identity_sets from payload."""
     monkeypatch.setenv("NEO4J_PROJECTION_BATCH_SIZE", "50")
     emu = _ProjectionGraphEmulator()
     payload = _minimal_payload(
