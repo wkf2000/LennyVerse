@@ -45,6 +45,31 @@ def test_rebuild_graph_reads_canonical_and_projects_with_clear_first(
     assert json.loads(out) == projection_stats
 
 
+def test_rebuild_graph_ignored_output_flag_still_succeeds(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(
+        "sys.argv",
+        ["ingest", "rebuild-graph", "--output", "/legacy/ingest-output"],
+    )
+    payload = _minimal_payload()
+    projection_stats = {"documents": 1, "chunks": 0, "elapsed_ms": 7}
+
+    with (
+        patch("ingest.cli.fetch_projection_inputs", return_value=payload) as mock_fetch,
+        patch("ingest.cli.project_to_neo4j", return_value=projection_stats) as mock_project,
+    ):
+        rc = cli.main()
+
+    assert rc == 0
+    mock_fetch.assert_called_once_with()
+    mock_project.assert_called_once_with(payload, clear_first=True)
+    captured = capsys.readouterr()
+    assert "--output is ignored for rebuild-graph" in captured.err
+    out = captured.out.strip()
+    assert json.loads(out) == projection_stats
+
+
 def test_rebuild_graph_exits_nonzero_on_canonical_read_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

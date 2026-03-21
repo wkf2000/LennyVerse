@@ -64,9 +64,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Reprocess documents even when checksum is unchanged.",
     )
 
-    subparsers.add_parser(
+    rebuild_graph_parser = subparsers.add_parser(
         "rebuild-graph",
         help="Rebuild Neo4j graph projection from canonical Supabase data (clear + full project).",
+    )
+    rebuild_graph_parser.add_argument(
+        "--output",
+        default=None,
+        metavar="DIR",
+        help=argparse.SUPPRESS,
     )
 
     return parser
@@ -101,6 +107,10 @@ def main() -> int:
         return 0
 
     if args.command == "rebuild-graph":
+        if args.output is not None:
+            logger.warning(
+                "--output is ignored for rebuild-graph; canonical rebuild uses Supabase and Neo4j only"
+            )
         try:
             payload = fetch_projection_inputs()
         except Exception:
