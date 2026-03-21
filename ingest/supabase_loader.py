@@ -7,7 +7,11 @@ from typing import Any
 
 from supabase import Client, create_client
 
+from ingest.neo4j_projector import ProjectionPayload
+
 logger = logging.getLogger(__name__)
+
+_DEFAULT_FETCH_PAGE_SIZE = 1000
 
 
 def _read_dotenv(dotenv_path: Path) -> dict[str, str]:
@@ -42,6 +46,71 @@ def _supabase_credentials() -> tuple[str, str]:
 
 def _chunked(items: list[dict[str, Any]], size: int) -> list[list[dict[str, Any]]]:
     return [items[i : i + size] for i in range(0, len(items), size)]
+
+
+def _fetch_page_size() -> int:
+    raw = os.environ.get("SUPABASE_FETCH_PAGE_SIZE", str(_DEFAULT_FETCH_PAGE_SIZE)).strip()
+    try:
+        n = int(raw)
+    except ValueError as e:
+        raise ValueError(f"Invalid SUPABASE_FETCH_PAGE_SIZE: {raw!r}") from e
+    if n < 1:
+        raise ValueError("SUPABASE_FETCH_PAGE_SIZE must be >= 1")
+    return n
+
+
+_PROJECTION_TABLE_ORDER: dict[str, tuple[str, ...]] = {
+    "documents": ("id",),
+    "chunks": ("id",),
+    "guests": ("id",),
+    "tags": ("id",),
+    "concepts": ("id",),
+    "frameworks": ("id",),
+    "document_guests": ("document_id", "guest_id"),
+    "document_tags": ("document_id", "tag_id"),
+    "chunk_concepts": ("chunk_id", "concept_id"),
+    "chunk_frameworks": ("chunk_id", "framework_id"),
+}
+
+
+def _ordered_select(client: Client, table: str) -> Any:
+    q = client.table(table).select("*")
+    for col in _PROJECTION_TABLE_ORDER[table]:
+        q = q.order(col)
+    return q
+
+
+def _fetch_all_rows(client: Client, table: str, *, page_size: int | None = None) -> list[dict[str, Any]]:
+    """Read all rows from a PostgREST table using limit/offset pagination."""
+    size = page_size if page_size is not None else _fetch_page_size()
+    rows: list[dict[str, Any]] = []
+    offset = 0
+    while True:
+        response = _ordered_select(client, table).limit(size).offset(offset).execute()
+        batch = list(response.data or [])
+        rows.extend(batch)
+        if len(batch) < size:
+            break
+        offset += size
+    return rows
+
+
+def fetch_projection_inputs() -> ProjectionPayload:
+    """Load canonical Supabase rows needed for Neo4j graph projection."""
+    url, key = _supabase_credentials()
+    client = create_client(url, key)
+    return {
+        "documents": _fetch_all_rows(client, "documents"),
+        "chunks": _fetch_all_rows(client, "chunks"),
+        "guests": _fetch_all_rows(client, "guests"),
+        "tags": _fetch_all_rows(client, "tags"),
+        "concepts": _fetch_all_rows(client, "concepts"),
+        "frameworks": _fetch_all_rows(client, "frameworks"),
+        "document_guests": _fetch_all_rows(client, "document_guests"),
+        "document_tags": _fetch_all_rows(client, "document_tags"),
+        "chunk_concepts": _fetch_all_rows(client, "chunk_concepts"),
+        "chunk_frameworks": _fetch_all_rows(client, "chunk_frameworks"),
+    }
 
 
 def load_documents_and_chunks(

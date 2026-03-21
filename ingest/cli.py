@@ -6,7 +6,11 @@ import logging
 import sys
 from pathlib import Path
 
+from ingest.neo4j_projector import project_to_neo4j
 from ingest.pipeline import STAGES, run_pipeline
+from ingest.supabase_loader import fetch_projection_inputs
+
+logger = logging.getLogger(__name__)
 
 
 def _configure_logging() -> None:
@@ -60,10 +64,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Reprocess documents even when checksum is unchanged.",
     )
 
-    rebuild_graph_parser = subparsers.add_parser(
-        "rebuild-graph", help="Rebuild graph projection markers from canonical artifacts."
+    subparsers.add_parser(
+        "rebuild-graph",
+        help="Rebuild Neo4j graph projection from canonical Supabase data (clear + full project).",
     )
-    rebuild_graph_parser.add_argument("--output", default="data/ingest-output")
 
     return parser
 
@@ -97,11 +101,17 @@ def main() -> int:
         return 0
 
     if args.command == "rebuild-graph":
-        output_dir = Path(args.output)
-        marker = output_dir / "graph_rebuild_requested.txt"
-        marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.write_text("Graph rebuild requested for local manual ingestion.\n", encoding="utf-8")
-        print({"status": "ok", "marker": str(marker)})
+        try:
+            payload = fetch_projection_inputs()
+        except Exception:
+            logger.exception("Failed to read canonical data from Supabase")
+            return 1
+        try:
+            result = project_to_neo4j(payload, clear_first=True)
+        except Exception:
+            logger.exception("Neo4j projection failed")
+            return 1
+        print(json.dumps(result, indent=2, default=str))
         return 0
 
     parser.error("Unknown command")
