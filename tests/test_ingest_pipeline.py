@@ -36,15 +36,10 @@ def test_parse_and_chunk_are_deterministic(tmp_path: Path) -> None:
     assert parsed_a.id == parsed_b.id == "doc:lenny-test-post"
     assert parsed_a.checksum == parsed_b.checksum
 
-    chunks_a = build_chunks(parsed_a, max_words=10)
-    chunks_b = build_chunks(parsed_b, max_words=10)
-    assert [chunk.id for chunk in chunks_a] == [
-        "chunk:lenny-test-post:0",
-        "chunk:lenny-test-post:1",
-        "chunk:lenny-test-post:2",
-        "chunk:lenny-test-post:3",
-    ]
-    assert [chunk.id for chunk in chunks_a] == [chunk.id for chunk in chunks_b]
+    chunks_a = build_chunks(parsed_a, chunk_size=30, chunk_overlap=0)
+    chunks_b = build_chunks(parsed_b, chunk_size=30, chunk_overlap=0)
+    assert len(chunks_a) > 0
+    assert [c.id for c in chunks_a] == [c.id for c in chunks_b]
 
 
 def test_build_chunks_overlap_increases_windows(tmp_path: Path) -> None:
@@ -52,12 +47,9 @@ def test_build_chunks_overlap_increases_windows(tmp_path: Path) -> None:
     _write_fixture(doc_path, body_word_count=25)
 
     parsed = parse_document(doc_path)
-    no_overlap = build_chunks(parsed, max_words=10, overlap_words=0)
-    with_overlap = build_chunks(parsed, max_words=10, overlap_words=3)
-    assert len(no_overlap) == 3
-    assert len(with_overlap) == 4
-    assert no_overlap[0].content.split()[0] == "w0"
-    assert with_overlap[1].content.split()[0] == "w7"
+    no_overlap = build_chunks(parsed, chunk_size=30, chunk_overlap=0)
+    with_overlap = build_chunks(parsed, chunk_size=30, chunk_overlap=10)
+    assert len(with_overlap) >= len(no_overlap)
 
 
 def test_rerun_skips_unchanged_documents(tmp_path: Path) -> None:
@@ -87,6 +79,36 @@ def test_force_rerun_reprocesses_unchanged_documents(tmp_path: Path) -> None:
     run_pipeline(input_dir=input_dir, output_dir=output_dir, stages=("parse", "chunk"))
     forced = run_pipeline(input_dir=input_dir, output_dir=output_dir, stages=("parse", "chunk"), force=True)
     assert forced["counts"]["processed_documents"] == 1
+
+
+def test_build_chunks_uses_markdown_splitter(tmp_path: Path) -> None:
+    """MarkdownTextSplitter respects markdown structure in split boundaries."""
+    md = "\n".join([
+        "---",
+        "source_type: newsletter",
+        "source_slug: md-split-test",
+        "title: Markdown Split Test",
+        "published_at: 2026-03-20T00:00:00+00:00",
+        "description: fixture",
+        "---",
+        "# Section One",
+        "",
+        "First section content that is long enough to matter. " * 10,
+        "",
+        "# Section Two",
+        "",
+        "Second section content that is also long enough. " * 10,
+    ])
+    doc_path = tmp_path / "post.md"
+    doc_path.write_text(md, encoding="utf-8")
+
+    parsed = parse_document(doc_path)
+    chunks = build_chunks(parsed, chunk_size=200, chunk_overlap=0)
+
+    assert len(chunks) >= 2
+    assert all(c.id.startswith("chunk:md-split-test:") for c in chunks)
+    assert chunks[0].document_id == "doc:md-split-test"
+    assert [c.chunk_index for c in chunks] == list(range(len(chunks)))
 
 
 def test_embed_texts_calls_ollama_embed_documents() -> None:

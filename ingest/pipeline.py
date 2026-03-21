@@ -2,15 +2,42 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from ingest.embedder import embed_text
+from langchain_text_splitters import MarkdownTextSplitter
+
+from ingest.embedder import embed_batch_size, embed_texts
 from ingest.supabase_loader import load_documents_and_chunks
 
 STAGES = ("parse", "chunk", "embed", "extract", "load", "project")
+
+logger = logging.getLogger(__name__)
+
+
+def chunk_params_from_env() -> tuple[int, int]:
+    """Return (chunk_size_chars, chunk_overlap_chars) from env; defaults 1000 and 200."""
+    size_raw = os.getenv("INGEST_CHUNK_SIZE_CHARS", "1000")
+    overlap_raw = os.getenv("INGEST_CHUNK_OVERLAP_CHARS", "200")
+    try:
+        chunk_size = int(size_raw.strip())
+    except ValueError as e:
+        raise ValueError(f"Invalid INGEST_CHUNK_SIZE_CHARS: {size_raw!r}") from e
+    try:
+        chunk_overlap = int(overlap_raw.strip())
+    except ValueError as e:
+        raise ValueError(f"Invalid INGEST_CHUNK_OVERLAP_CHARS: {overlap_raw!r}") from e
+    if chunk_size < 1:
+        raise ValueError("INGEST_CHUNK_SIZE_CHARS must be >= 1")
+    if chunk_overlap < 0:
+        raise ValueError("INGEST_CHUNK_OVERLAP_CHARS must be >= 0")
+    if chunk_overlap >= chunk_size:
+        raise ValueError("INGEST_CHUNK_OVERLAP_CHARS must be less than INGEST_CHUNK_SIZE_CHARS")
+    return chunk_size, chunk_overlap
 
 
 @dataclass(frozen=True)
@@ -114,32 +141,43 @@ def parse_document(path: Path) -> ParsedDocument:
     )
 
 
-def build_chunks(document: ParsedDocument, max_words: int = 220) -> list[ChunkRecord]:
-    metadata, body = _parse_frontmatter(document.raw_markdown)
-    _ = metadata
-    words = body.split()
-    if not words:
+def build_chunks(
+    document: ParsedDocument,
+    chunk_size: int = 1000,
+    chunk_overlap: int = 200,
+) -> list[ChunkRecord]:
+    if chunk_size < 1:
+        raise ValueError("chunk_size must be >= 1")
+    if chunk_overlap < 0:
+        raise ValueError("chunk_overlap must be >= 0")
+    if chunk_overlap >= chunk_size:
+        raise ValueError("chunk_overlap must be less than chunk_size")
+
+    _, body = _parse_frontmatter(document.raw_markdown)
+    if not body.strip():
         return []
 
+    splitter = MarkdownTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+    )
+    texts = splitter.split_text(body)
+
     chunks: list[ChunkRecord] = []
-    idx = 0
-    for offset in range(0, len(words), max_words):
-        chunk_words = words[offset : offset + max_words]
-        content = " ".join(chunk_words).strip()
+    for idx, content in enumerate(texts):
         chunks.append(
             ChunkRecord(
                 id=stable_chunk_id(document.source_slug, idx),
                 document_id=document.id,
                 chunk_index=idx,
-                content=content,
-                token_count=len(chunk_words),
+                content=content.strip(),
+                token_count=len(content),
                 metadata={
                     "source_slug": document.source_slug,
                     "source_type": document.source_type,
                 },
             )
         )
-        idx += 1
     return chunks
 
 
@@ -183,6 +221,7 @@ def run_pipeline(
 
     since_dt = _parse_since(since)
     paths = sorted(input_dir.rglob("*.md"))
+    logger.info("Scanning %s — found %d markdown file(s)", input_dir, len(paths))
     docs = [parse_document(path) for path in paths]
 
     if source_filter:
@@ -191,12 +230,34 @@ def run_pipeline(
     if limit is not None:
         docs = docs[:limit]
 
+    filter_parts: list[str] = []
+    if source_filter:
+        filter_parts.append(f"source={source_filter}")
+    if since:
+        filter_parts.append(f"since={since}")
+    if limit is not None:
+        filter_parts.append(f"limit={limit}")
+    filter_note = f" ({', '.join(filter_parts)})" if filter_parts else ""
+    logger.info("Matched %d document(s) after filters%s", len(docs), filter_note)
+    logger.info("Stages: %s", ", ".join(stages))
+
+    chunk_size_chars, chunk_overlap_chars = 1000, 200
+    if "chunk" in stages:
+        chunk_size_chars, chunk_overlap_chars = chunk_params_from_env()
+        logger.info("Chunking: size_chars=%d overlap_chars=%d", chunk_size_chars, chunk_overlap_chars)
+
+    embed_bs = 32
+    if "embed" in stages:
+        embed_bs = embed_batch_size()
+        logger.info("Embedding: batch_size=%d (INGEST_EMBED_BATCH_SIZE)", embed_bs)
+
     stage_stats = {stage: {"processed": 0, "skipped": 0} for stage in STAGES}
     all_chunks: list[ChunkRecord] = []
     processed_docs: list[ParsedDocument] = []
     pending_state_updates: dict[str, dict[str, str]] = {}
 
-    for doc in docs:
+    total_docs = len(docs)
+    for doc_index, doc in enumerate(docs, start=1):
         previous = state["documents"].get(doc.source_slug)
         unchanged = (not force) and previous and previous.get("checksum") == doc.checksum
 
@@ -207,24 +268,54 @@ def run_pipeline(
             for stage in stages:
                 if stage != "parse":
                     stage_stats[stage]["skipped"] += 1
+            logger.info(
+                "[%d/%d] skip %s — unchanged checksum",
+                doc_index,
+                total_docs,
+                doc.source_slug,
+            )
             continue
 
+        logger.info(
+            "[%d/%d] process %s — %s",
+            doc_index,
+            total_docs,
+            doc.source_slug,
+            doc.title,
+        )
         processed_docs.append(doc)
 
         if "chunk" in stages:
-            chunks = build_chunks(doc)
+            chunks = build_chunks(
+                doc,
+                chunk_size=chunk_size_chars,
+                chunk_overlap=chunk_overlap_chars,
+            )
 
             if "embed" in stages:
-                for idx, chunk in enumerate(chunks):
-                    chunks[idx] = ChunkRecord(
-                        id=chunk.id,
-                        document_id=chunk.document_id,
-                        chunk_index=chunk.chunk_index,
-                        content=chunk.content,
-                        token_count=chunk.token_count,
-                        metadata=chunk.metadata,
-                        embedding=embed_text(chunk.content),
-                    )
+                n_chunks = len(chunks)
+                if n_chunks:
+                    logger.info("  embedding %d chunk(s) for %s", n_chunks, doc.source_slug)
+                step = max(1, n_chunks // 10) if n_chunks > 20 else 1
+                done = 0
+                for batch_start in range(0, n_chunks, embed_bs):
+                    batch_end = min(batch_start + embed_bs, n_chunks)
+                    slice_chunks = chunks[batch_start:batch_end]
+                    vectors = embed_texts([c.content for c in slice_chunks])
+                    for offset, (chunk, vec) in enumerate(zip(slice_chunks, vectors, strict=True)):
+                        idx = batch_start + offset
+                        chunks[idx] = ChunkRecord(
+                            id=chunk.id,
+                            document_id=chunk.document_id,
+                            chunk_index=chunk.chunk_index,
+                            content=chunk.content,
+                            token_count=chunk.token_count,
+                            metadata=chunk.metadata,
+                            embedding=vec,
+                        )
+                        done = idx + 1
+                        if done == 1 or done == n_chunks or done % step == 0:
+                            logger.info("    chunk %d/%d", done, n_chunks)
             all_chunks.extend(chunks)
             stage_stats["chunk"]["processed"] += 1
 
@@ -268,7 +359,7 @@ def run_pipeline(
         for chunk in all_chunks
     ]
 
-    run_payload = {
+    run_payload: dict[str, Any] = {
         "run_at": datetime.now(UTC).isoformat(),
         "input_dir": str(input_dir),
         "output_dir": str(output_dir),
@@ -280,16 +371,38 @@ def run_pipeline(
         },
         "stage_stats": stage_stats,
     }
+    if "chunk" in stages:
+        run_payload["chunk_config"] = {
+            "size_chars": chunk_size_chars,
+            "overlap_chars": chunk_overlap_chars,
+        }
 
     if "load" in stages and (documents_payload or chunks_payload):
+        logger.info(
+            "Loading to Supabase: %d document(s), %d chunk(s)",
+            len(documents_payload),
+            len(chunks_payload),
+        )
         run_payload["load_result"] = load_documents_and_chunks(documents_payload, chunks_payload)
+        logger.info("Load finished: %s", run_payload["load_result"])
+    elif "load" in stages:
+        logger.info("Load stage skipped — no documents or chunks to upsert")
 
     state["documents"].update(pending_state_updates)
 
+    logger.info("Writing artifacts to %s", output_dir)
     _write_json(output_dir / "documents.json", documents_payload)
     _write_json(output_dir / "chunks.json", chunks_payload)
     _write_json(output_dir / "last_run.json", run_payload)
     _write_json(checkpoint_path, state)
+
+    skipped_docs = total_docs - len(processed_docs)
+    logger.info(
+        "Done — processed %d document(s), skipped %d (unchanged), %d chunk(s), checkpoint updated",
+        len(processed_docs),
+        skipped_docs,
+        len(all_chunks),
+    )
 
     return run_payload
 
