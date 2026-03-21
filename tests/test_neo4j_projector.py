@@ -39,13 +39,33 @@ def mock_neo4j_driver() -> MagicMock:
     return mock_driver
 
 
+def _session_run_that_records_queries(mock_session: MagicMock, queries: list[str]) -> None:
+    """Stub ``session.run`` so relationship upserts can read ``RETURN count(*) AS written``."""
+
+    def fake_run(query: str, parameters: dict | None = None, **kwargs: object) -> MagicMock:
+        queries.append(query)
+        merged: dict[str, object] = {}
+        if parameters:
+            merged.update(parameters)
+        merged.update(kwargs)
+        result = MagicMock()
+        if "AS written" in query.replace("\n", " "):
+            batch = merged.get("batch") or []
+            result.single.return_value = {"written": len(batch)}
+        else:
+            result.single.return_value = None
+        return result
+
+    mock_session.run.side_effect = fake_run
+
+
 def test_project_to_neo4j_runs_constraints_before_any_unwind_upserts(
     mock_neo4j_driver: MagicMock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("NEO4J_PROJECTION_BATCH_SIZE", "50")
     mock_session = mock_neo4j_driver.session.return_value.__enter__.return_value
     queries: list[str] = []
-    mock_session.run.side_effect = lambda q, *a, **k: queries.append(q)
+    _session_run_that_records_queries(mock_session, queries)
 
     docs = [
         {
@@ -93,7 +113,7 @@ def test_project_to_neo4j_batches_node_upserts_by_batch_size(
     monkeypatch.setenv("NEO4J_PROJECTION_BATCH_SIZE", "2")
     mock_session = mock_neo4j_driver.session.return_value.__enter__.return_value
     queries: list[str] = []
-    mock_session.run.side_effect = lambda q, *a, **k: queries.append(q)
+    _session_run_that_records_queries(mock_session, queries)
 
     docs = [
         {
@@ -126,7 +146,7 @@ def test_project_to_neo4j_batches_relationship_upserts(
     monkeypatch.setenv("NEO4J_PROJECTION_BATCH_SIZE", "2")
     mock_session = mock_neo4j_driver.session.return_value.__enter__.return_value
     queries: list[str] = []
-    mock_session.run.side_effect = lambda q, *a, **k: queries.append(q)
+    _session_run_that_records_queries(mock_session, queries)
 
     payload = _minimal_payload(
         documents=[
@@ -188,7 +208,7 @@ def test_project_to_neo4j_clear_first_runs_after_constraints_before_upserts(
     monkeypatch.setenv("NEO4J_PROJECTION_BATCH_SIZE", "50")
     mock_session = mock_neo4j_driver.session.return_value.__enter__.return_value
     queries: list[str] = []
-    mock_session.run.side_effect = lambda q, *a, **k: queries.append(q)
+    _session_run_that_records_queries(mock_session, queries)
 
     payload = _minimal_payload(
         documents=[
@@ -222,7 +242,7 @@ def test_project_to_neo4j_returns_counts_and_elapsed_ms(
 ) -> None:
     monkeypatch.setenv("NEO4J_PROJECTION_BATCH_SIZE", "50")
     mock_session = mock_neo4j_driver.session.return_value.__enter__.return_value
-    mock_session.run.return_value = None
+    _session_run_that_records_queries(mock_session, [])
 
     payload = _minimal_payload(
         documents=[
@@ -252,6 +272,156 @@ def test_project_to_neo4j_returns_counts_and_elapsed_ms(
     assert stats["rels_features_guest"] == 1
     assert "elapsed_ms" in stats
     assert stats["elapsed_ms"] >= 0
+
+
+def test_project_to_neo4j_guest_rel_stats_reflect_written_not_batch_size(
+    mock_neo4j_driver: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """End-to-end: ``rels_*`` must follow ``RETURN count(*) AS written``, not UNWIND row count."""
+    monkeypatch.setenv("NEO4J_PROJECTION_BATCH_SIZE", "50")
+    mock_session = mock_neo4j_driver.session.return_value.__enter__.return_value
+
+    def fake_run(query: str, parameters: dict | None = None, **kwargs: object) -> MagicMock:
+        merged: dict[str, object] = {}
+        if parameters:
+            merged.update(parameters)
+        merged.update(kwargs)
+        result = MagicMock()
+        q_flat = query.replace("\n", " ")
+        if "AS written" in q_flat and "FEATURES_GUEST" in q_flat:
+            result.single.return_value = {"written": 0}
+        elif "AS written" in q_flat:
+            batch = merged.get("batch") or []
+            result.single.return_value = {"written": len(batch)}
+        else:
+            result.single.return_value = None
+        return result
+
+    mock_session.run.side_effect = fake_run
+
+    payload = _minimal_payload(
+        documents=[
+            {
+                "id": "doc:z",
+                "source_type": "newsletter",
+                "source_slug": "z",
+                "title": "Z",
+                "published_at": None,
+                "word_count": 1,
+                "description": "",
+                "checksum": "x",
+                "ingested_at": "t",
+                "updated_at": "t",
+                "path": "/p",
+            }
+        ],
+        guests=[{"id": "guest:amy", "name": "Amy", "profile": {}}],
+        document_guests=[{"document_id": "doc:z", "guest_id": "guest:amy", "role": "", "confidence": 1.0}],
+    )
+
+    with patch.object(np, "_connect_driver", return_value=mock_neo4j_driver):
+        stats = np.project_to_neo4j(payload)
+
+    assert stats["rels_features_guest"] == 0
+
+
+def test_upsert_relationships_batched_uses_written_total_not_batch_rows() -> None:
+    session = MagicMock()
+
+    def fake_run(query: str, parameters: dict | None = None, **kwargs: object) -> MagicMock:
+        batch = (parameters or {}).get("batch") or kwargs.get("batch") or []
+        r = MagicMock()
+        r.single.return_value = {"written": min(len(batch), 2)}
+        return r
+
+    session.run.side_effect = fake_run
+    rows = [{"start_id": "a", "end_id": "b", "properties": {}} for _ in range(5)]
+    total = np._upsert_relationships_batched(
+        session,
+        rel_type="FEATURES_GUEST",
+        start_label="Document",
+        end_label="Guest",
+        rows=rows,
+        batch_size=10,
+    )
+    assert total == 2
+
+
+def test_upsert_relationships_batched_sums_written_across_batches() -> None:
+    session = MagicMock()
+
+    def fake_run(query: str, parameters: dict | None = None, **kwargs: object) -> MagicMock:
+        batch = (parameters or {}).get("batch") or kwargs.get("batch") or []
+        r = MagicMock()
+        r.single.return_value = {"written": len(batch) // 2}
+        return r
+
+    session.run.side_effect = fake_run
+    rows = [{"start_id": str(i), "end_id": str(i + 100), "properties": {}} for i in range(6)]
+    total = np._upsert_relationships_batched(
+        session,
+        rel_type="HAS_TAG",
+        start_label="Document",
+        end_label="Tag",
+        rows=rows,
+        batch_size=2,
+    )
+    assert total == 3
+
+
+def test_upsert_part_of_batched_uses_written_total_not_chunk_rows() -> None:
+    session = MagicMock()
+
+    def fake_run(query: str, parameters: dict | None = None, **kwargs: object) -> MagicMock:
+        batch = (parameters or {}).get("batch") or kwargs.get("batch") or []
+        r = MagicMock()
+        r.single.return_value = {"written": 1 if len(batch) == 3 else len(batch)}
+        return r
+
+    session.run.side_effect = fake_run
+    chunk_rows = [
+        {
+            "id": "c:0",
+            "document_id": "d:0",
+            "chunk_index": 0,
+            "content": "",
+            "token_count": 0,
+            "metadata": {},
+            "embedding": None,
+        },
+        {
+            "id": "c:1",
+            "document_id": "d:1",
+            "chunk_index": 0,
+            "content": "",
+            "token_count": 0,
+            "metadata": {},
+            "embedding": None,
+        },
+        {
+            "id": "c:2",
+            "document_id": "d:2",
+            "chunk_index": 0,
+            "content": "",
+            "token_count": 0,
+            "metadata": {},
+            "embedding": None,
+        },
+    ]
+    total = np._upsert_part_of_batched(session, chunk_rows=chunk_rows, batch_size=10)
+    assert total == 1
+
+
+def test_upsert_relationships_batched_missing_single_counts_as_zero() -> None:
+    session = MagicMock()
+    r = MagicMock()
+    r.single.return_value = None
+    session.run.return_value = r
+    rows = [{"start_id": "a", "end_id": "b", "properties": {}}]
+    total = np._upsert_relationships_batched(
+        session, rel_type="R", start_label="A", end_label="B", rows=rows, batch_size=10
+    )
+    assert total == 0
 
 
 def test_projector_module_imports() -> None:

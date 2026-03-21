@@ -102,6 +102,13 @@ def _upsert_labeled_nodes_batched(
     return total
 
 
+def _written_from_run(result: Any) -> int:
+    record = result.single()
+    if record is None:
+        return 0
+    return int(record["written"])
+
+
 def _upsert_part_of_batched(
     session: Any,
     *,
@@ -117,16 +124,19 @@ def _upsert_part_of_batched(
             {"chunk_id": str(r["id"]), "document_id": str(r["document_id"])}
             for r in batch
         ]
-        session.run(
+        result = session.run(
             """
             UNWIND $batch AS row
-            MATCH (c:Chunk {id: row.chunk_id})
-            MATCH (d:Document {id: row.document_id})
+            OPTIONAL MATCH (c:Chunk {id: row.chunk_id})
+            OPTIONAL MATCH (d:Document {id: row.document_id})
+            WITH row, c, d
+            WHERE c IS NOT NULL AND d IS NOT NULL
             MERGE (c)-[r:PART_OF]->(d)
+            RETURN count(*) AS written
             """,
             batch=payload,
         )
-        total += len(batch)
+        total += _written_from_run(result)
     return total
 
 
@@ -158,17 +168,20 @@ def _upsert_relationships_batched(
     total = 0
     for i in range(0, len(rows), batch_size):
         batch = rows[i : i + batch_size]
-        session.run(
+        result = session.run(
             f"""
             UNWIND $batch AS row
-            MATCH (a:{start_label} {{id: row.start_id}})
-            MATCH (b:{end_label} {{id: row.end_id}})
+            OPTIONAL MATCH (a:{start_label} {{id: row.start_id}})
+            OPTIONAL MATCH (b:{end_label} {{id: row.end_id}})
+            WITH row, a, b
+            WHERE a IS NOT NULL AND b IS NOT NULL
             MERGE (a)-[r:{rel_type}]->(b)
             SET r += coalesce(row.properties, {{}})
+            RETURN count(*) AS written
             """,
             batch=batch,
         )
-        total += len(batch)
+        total += _written_from_run(result)
     return total
 
 
