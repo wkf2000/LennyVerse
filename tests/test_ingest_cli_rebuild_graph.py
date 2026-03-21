@@ -6,7 +6,9 @@ from unittest.mock import patch
 import pytest
 
 from ingest import cli
-from ingest.neo4j_projector import ProjectionPayload
+from ingest.neo4j_projector import ProjectionPayload, projection_identity_node_keys, projection_identity_relationship_keys
+
+import tests.test_neo4j_projector as neo4j_projector_tests
 
 
 def _minimal_payload() -> ProjectionPayload:
@@ -100,3 +102,172 @@ def test_rebuild_graph_exits_nonzero_on_projection_failure(
         rc = cli.main()
 
     assert rc == 1
+
+
+def test_backfill_exits_nonzero_on_projection_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    """Backfill must signal failure when Neo4j projection raises (same contract as rebuild-graph)."""
+    input_dir = tmp_path / "inputs"
+    output_dir = tmp_path / "out"
+    input_dir.mkdir()
+    (input_dir / "post.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "source_type: newsletter",
+                "source_slug: bf-proj-fail",
+                "title: BF",
+                "published_at: 2026-03-20T00:00:00+00:00",
+                "description: x",
+                "---",
+                "hello world " * 20,
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "ingest",
+            "backfill",
+            "--source",
+            "newsletter",
+            "--input",
+            str(input_dir),
+            "--output",
+            str(output_dir),
+            "--stages",
+            "parse,chunk,project",
+        ],
+    )
+    with patch("ingest.pipeline.project_to_neo4j", side_effect=RuntimeError("projection failed")):
+        rc = cli.main()
+
+    assert rc == 1
+
+
+def _rich_rebuild_payload() -> ProjectionPayload:
+    return {
+        "documents": [
+            {
+                "id": "doc:a",
+                "source_type": "newsletter",
+                "source_slug": "a",
+                "title": "A",
+                "published_at": None,
+                "word_count": 1,
+                "description": "",
+                "checksum": "x",
+                "ingested_at": "t",
+                "updated_at": "t",
+                "path": "/p",
+            }
+        ],
+        "chunks": [
+            {
+                "id": "chunk:a:0",
+                "document_id": "doc:a",
+                "chunk_index": 0,
+                "content": "c",
+                "token_count": 1,
+                "metadata": {},
+                "embedding": None,
+            }
+        ],
+        "guests": [{"id": "guest:g1", "name": "G1", "profile": {}}],
+        "tags": [{"id": "tag:t1", "name": "t1"}],
+        "concepts": [
+            {
+                "id": "concept:c1",
+                "name": "c1",
+                "normalized_name": "c1",
+                "description": "d",
+            }
+        ],
+        "frameworks": [
+            {"id": "framework:f1", "name": "f1", "summary": "s", "confidence": 0.5}
+        ],
+        "document_guests": [
+            {"document_id": "doc:a", "guest_id": "guest:g1", "role": "", "confidence": 1.0}
+        ],
+        "document_tags": [{"document_id": "doc:a", "tag_id": "tag:t1"}],
+        "chunk_concepts": [
+            {
+                "chunk_id": "chunk:a:0",
+                "concept_id": "concept:c1",
+                "confidence": 0.4,
+                "evidence_span": "e",
+            }
+        ],
+        "chunk_frameworks": [
+            {
+                "chunk_id": "chunk:a:0",
+                "framework_id": "framework:f1",
+                "confidence": 0.6,
+                "evidence_span": "x",
+            }
+        ],
+    }
+
+
+def test_rebuild_graph_cli_clear_first_removes_stale_in_scope_graph(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """rebuild-graph uses the same clear+project contract as ``project_to_neo4j(..., clear_first=True)``."""
+    import ingest.neo4j_projector as np
+
+    monkeypatch.setenv("NEO4J_PROJECTION_BATCH_SIZE", "50")
+    monkeypatch.setattr("sys.argv", ["ingest", "rebuild-graph"])
+    emu = neo4j_projector_tests._ProjectionGraphEmulator()
+    emu.nodes[("Document", "doc:stale")] = {"id": "doc:stale"}
+    emu.rels.add(
+        ("HAS_TAG", "doc:stale", "tag:orphan", np.projection_rel_props_key({}))
+    )
+    emu.nodes[("Tag", "tag:orphan")] = {"id": "tag:orphan"}
+    payload = _rich_rebuild_payload()
+
+    def real_project(p: ProjectionPayload, *, clear_first: bool = False) -> dict[str, int]:
+        with patch.object(np, "_connect_driver", return_value=neo4j_projector_tests._emulator_driver(emu)):
+            return np.project_to_neo4j(p, clear_first=clear_first)
+
+    with (
+        patch("ingest.cli.fetch_projection_inputs", return_value=payload),
+        patch("ingest.cli.project_to_neo4j", side_effect=real_project),
+    ):
+        rc = cli.main()
+
+    assert rc == 0
+    assert ("Document", "doc:stale") not in emu.nodes
+    assert ("Tag", "tag:orphan") not in emu.nodes
+
+
+def test_rebuild_graph_cli_graph_identity_matches_canonical_payload(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import ingest.neo4j_projector as np
+
+    monkeypatch.setenv("NEO4J_PROJECTION_BATCH_SIZE", "50")
+    monkeypatch.setattr("sys.argv", ["ingest", "rebuild-graph"])
+    emu = neo4j_projector_tests._ProjectionGraphEmulator()
+    payload = _rich_rebuild_payload()
+    expected_nodes = projection_identity_node_keys(payload)
+    expected_rels = projection_identity_relationship_keys(payload)
+
+    def real_project(p: ProjectionPayload, *, clear_first: bool = False) -> dict[str, int]:
+        with patch.object(np, "_connect_driver", return_value=neo4j_projector_tests._emulator_driver(emu)):
+            return np.project_to_neo4j(p, clear_first=clear_first)
+
+    with (
+        patch("ingest.cli.fetch_projection_inputs", return_value=payload),
+        patch("ingest.cli.project_to_neo4j", side_effect=real_project),
+    ):
+        rc = cli.main()
+
+    assert rc == 0
+    assert set(emu.nodes.keys()) == expected_nodes
+    assert emu.rels == expected_rels
+    assert json.loads(capsys.readouterr().out.strip())["elapsed_ms"] >= 0

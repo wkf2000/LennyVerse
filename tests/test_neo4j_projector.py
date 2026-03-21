@@ -500,6 +500,253 @@ def test_related_to_excludes_self_pairs() -> None:
     assert np.build_related_to_edges(chunk_concepts, chunk_to_document) == []
 
 
+class _ProjectionGraphEmulator:
+    """Minimal in-memory graph matching ``project_to_neo4j`` clear + upsert contract."""
+
+    _PROJECTION_LABELS = frozenset({"Document", "Chunk", "Guest", "Tag", "Concept", "Framework"})
+
+    def __init__(self) -> None:
+        self.nodes: dict[tuple[str, str], dict[str, object]] = {}
+        self.rels: set[tuple[str, str, str, str]] = set()
+
+    def _detach_delete_scope(self, labels: list[str]) -> None:
+        label_set = set(labels)
+        removed_ids: set[str] = set()
+        for key in list(self.nodes.keys()):
+            lab, nid = key
+            if lab in label_set:
+                removed_ids.add(nid)
+                del self.nodes[key]
+        self.rels = {
+            r
+            for r in self.rels
+            if r[1] not in removed_ids and r[2] not in removed_ids
+        }
+
+    def _merge_nodes(self, label: str, batch: list[dict[str, object]]) -> None:
+        for row in batch:
+            nid = str(row["id"])
+            props = dict(row["props"])  # type: ignore[arg-type]
+            self.nodes[(label, nid)] = {**props, "id": nid}
+
+    def _merge_part_of(self, batch: list[dict[str, object]]) -> int:
+        written = 0
+        for row in batch:
+            cid, did = str(row["chunk_id"]), str(row["document_id"])
+            if ("Chunk", cid) in self.nodes and ("Document", did) in self.nodes:
+                self.rels.add(("PART_OF", cid, did, np.projection_rel_props_key({})))
+                written += 1
+        return written
+
+    def _merge_rels(
+        self,
+        rel_type: str,
+        start_label: str,
+        end_label: str,
+        batch: list[dict[str, object]],
+    ) -> int:
+        written = 0
+        for row in batch:
+            sid, eid = str(row["start_id"]), str(row["end_id"])
+            raw_props = row.get("properties") or {}
+            props = dict(raw_props) if isinstance(raw_props, dict) else {}
+            if (start_label, sid) in self.nodes and (end_label, eid) in self.nodes:
+                self.rels.add((rel_type, sid, eid, np.projection_rel_props_key(props)))
+                written += 1
+        return written
+
+    def run(self, query: str, parameters: dict[str, object] | None = None, **kwargs: object) -> MagicMock:
+        params: dict[str, object] = dict(parameters or {})
+        for k, v in kwargs.items():
+            params.setdefault(k, v)
+        q = query.replace("\n", " ")
+
+        result = MagicMock()
+
+        if "DETACH DELETE" in query:
+            self._detach_delete_scope(list(params.get("labels") or []))  # type: ignore[arg-type]
+            result.single.return_value = None
+            return result
+
+        if "CREATE CONSTRAINT" in q.upper():
+            result.single.return_value = None
+            return result
+
+        batch = params.get("batch")
+        if not isinstance(batch, list):
+            batch = []
+
+        if "MERGE (n:Document {id: row.id})" in q:
+            self._merge_nodes("Document", batch)  # type: ignore[arg-type]
+            result.single.return_value = None
+            return result
+        if "MERGE (n:Chunk {id: row.id})" in q:
+            self._merge_nodes("Chunk", batch)  # type: ignore[arg-type]
+            result.single.return_value = None
+            return result
+        if "MERGE (n:Guest {id: row.id})" in q:
+            self._merge_nodes("Guest", batch)  # type: ignore[arg-type]
+            result.single.return_value = None
+            return result
+        if "MERGE (n:Tag {id: row.id})" in q:
+            self._merge_nodes("Tag", batch)  # type: ignore[arg-type]
+            result.single.return_value = None
+            return result
+        if "MERGE (n:Concept {id: row.id})" in q:
+            self._merge_nodes("Concept", batch)  # type: ignore[arg-type]
+            result.single.return_value = None
+            return result
+        if "MERGE (n:Framework {id: row.id})" in q:
+            self._merge_nodes("Framework", batch)  # type: ignore[arg-type]
+            result.single.return_value = None
+            return result
+
+        if "MERGE (c)-[r:PART_OF]->(d)" in q:
+            n = self._merge_part_of(batch)  # type: ignore[arg-type]
+            result.single.return_value = {"written": n}
+            return result
+
+        if "MERGE (a)-[r:FEATURES_GUEST]->(b)" in q:
+            n = self._merge_rels("FEATURES_GUEST", "Document", "Guest", batch)  # type: ignore[arg-type]
+            result.single.return_value = {"written": n}
+            return result
+        if "MERGE (a)-[r:HAS_TAG]->(b)" in q:
+            n = self._merge_rels("HAS_TAG", "Document", "Tag", batch)  # type: ignore[arg-type]
+            result.single.return_value = {"written": n}
+            return result
+        if "MERGE (a)-[r:MENTIONS_CONCEPT]->(b)" in q:
+            n = self._merge_rels("MENTIONS_CONCEPT", "Document", "Concept", batch)  # type: ignore[arg-type]
+            result.single.return_value = {"written": n}
+            return result
+        if "MERGE (a)-[r:USES_FRAMEWORK]->(b)" in q:
+            n = self._merge_rels("USES_FRAMEWORK", "Document", "Framework", batch)  # type: ignore[arg-type]
+            result.single.return_value = {"written": n}
+            return result
+        if "MERGE (a)-[r:RELATED_TO]->(b)" in q:
+            n = self._merge_rels("RELATED_TO", "Concept", "Concept", batch)  # type: ignore[arg-type]
+            result.single.return_value = {"written": n}
+            return result
+
+        raise AssertionError(f"Unhandled Cypher in emulator: {q[:120]!r}...")
+
+
+def _emulator_driver(emu: _ProjectionGraphEmulator) -> MagicMock:
+    mock_session = MagicMock()
+    mock_session.run.side_effect = emu.run
+    mock_driver = MagicMock()
+    cm = MagicMock()
+    cm.__enter__.return_value = mock_session
+    cm.__exit__.return_value = None
+    mock_driver.session.return_value = cm
+    return mock_driver
+
+
+def test_project_clear_first_removes_stale_in_scope_nodes_and_edges(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Rebuild-graph contract: clear wipes prior projection-scope graph before upserting payload."""
+    monkeypatch.setenv("NEO4J_PROJECTION_BATCH_SIZE", "50")
+    emu = _ProjectionGraphEmulator()
+    emu.nodes[("Document", "doc:stale")] = {"id": "doc:stale"}
+    emu.rels.add(("HAS_TAG", "doc:stale", "tag:orphan", np.projection_rel_props_key({})))
+    emu.nodes[("Tag", "tag:orphan")] = {"id": "tag:orphan"}
+
+    payload = _minimal_payload(
+        documents=[
+            {
+                "id": "doc:live",
+                "source_type": "newsletter",
+                "source_slug": "live",
+                "title": "L",
+                "published_at": None,
+                "word_count": 1,
+                "description": "",
+                "checksum": "x",
+                "ingested_at": "t",
+                "updated_at": "t",
+                "path": "/p",
+            }
+        ],
+        tags=[{"id": "tag:live", "name": "live"}],
+        document_tags=[{"document_id": "doc:live", "tag_id": "tag:live"}],
+    )
+
+    with patch.object(np, "_connect_driver", return_value=_emulator_driver(emu)):
+        np.project_to_neo4j(payload, clear_first=True)
+
+    assert ("Document", "doc:stale") not in emu.nodes
+    assert ("Tag", "tag:orphan") not in emu.nodes
+    assert ("HAS_TAG", "doc:stale", "tag:orphan", np.projection_rel_props_key({})) not in emu.rels
+    assert ("Document", "doc:live") in emu.nodes
+    assert ("Tag", "tag:live") in emu.nodes
+
+
+def test_projected_graph_identity_matches_canonical_projection_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After full project, in-memory graph keys match canonical node/rel identity from payload."""
+    monkeypatch.setenv("NEO4J_PROJECTION_BATCH_SIZE", "50")
+    emu = _ProjectionGraphEmulator()
+    payload = _minimal_payload(
+        documents=[
+            {
+                "id": "doc:a",
+                "source_type": "newsletter",
+                "source_slug": "a",
+                "title": "A",
+                "published_at": None,
+                "word_count": 1,
+                "description": "",
+                "checksum": "x",
+                "ingested_at": "t",
+                "updated_at": "t",
+                "path": "/p",
+            }
+        ],
+        chunks=[
+            {
+                "id": "chunk:a:0",
+                "document_id": "doc:a",
+                "chunk_index": 0,
+                "content": "c",
+                "token_count": 1,
+                "metadata": {},
+                "embedding": None,
+            }
+        ],
+        guests=[{"id": "guest:g1", "name": "G1", "profile": {}}],
+        tags=[{"id": "tag:t1", "name": "t1"}],
+        concepts=[
+            {
+                "id": "concept:c1",
+                "name": "c1",
+                "normalized_name": "c1",
+                "description": "d",
+            }
+        ],
+        frameworks=[
+            {"id": "framework:f1", "name": "f1", "summary": "s", "confidence": 0.5}
+        ],
+        document_guests=[{"document_id": "doc:a", "guest_id": "guest:g1", "role": "", "confidence": 1.0}],
+        document_tags=[{"document_id": "doc:a", "tag_id": "tag:t1"}],
+        chunk_concepts=[
+            {"chunk_id": "chunk:a:0", "concept_id": "concept:c1", "confidence": 0.4, "evidence_span": "e"}
+        ],
+        chunk_frameworks=[
+            {"chunk_id": "chunk:a:0", "framework_id": "framework:f1", "confidence": 0.6, "evidence_span": "x"}
+        ],
+    )
+
+    expected_nodes = np.projection_identity_node_keys(payload)
+    expected_rels = np.projection_identity_relationship_keys(payload)
+
+    with patch.object(np, "_connect_driver", return_value=_emulator_driver(emu)):
+        np.project_to_neo4j(payload, clear_first=False)
+
+    assert set(emu.nodes.keys()) == expected_nodes
+    assert emu.rels == expected_rels
+
+
 def test_guest_and_tag_edges_have_stable_shape_and_order() -> None:
     document_guests = [
         {"document_id": "doc:z", "guest_id": "guest:bob", "role": "host"},

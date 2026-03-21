@@ -96,13 +96,17 @@ def main() -> int:
         return 0
 
     if args.command == "backfill":
-        result = run_pipeline(
-            input_dir=Path(args.input),
-            output_dir=Path(args.output),
-            stages=_parse_stages(args.stages),
-            source_filter=args.source,
-            force=args.force,
-        )
+        try:
+            result = run_pipeline(
+                input_dir=Path(args.input),
+                output_dir=Path(args.output),
+                stages=_parse_stages(args.stages),
+                source_filter=args.source,
+                force=args.force,
+            )
+        except Exception:
+            logger.exception("Backfill pipeline failed")
+            return 1
         print(json.dumps(result, indent=2, default=str))
         return 0
 

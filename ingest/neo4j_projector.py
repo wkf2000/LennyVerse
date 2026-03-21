@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import time
 from collections import defaultdict
@@ -433,3 +434,80 @@ def build_has_tag_edges(document_tags: Iterable[Mapping[str, Any]]) -> list[dict
     ]
     edges.sort(key=lambda e: (e["start_id"], e["end_id"]))
     return edges
+
+
+def projection_rel_props_key(props: Mapping[str, Any]) -> str:
+    """Stable JSON key for relationship property maps (identity contract tests / tooling)."""
+    return json.dumps(dict(props), sort_keys=True, default=str)
+
+
+def projection_identity_node_keys(payload: ProjectionPayload) -> set[tuple[str, str]]:
+    """Node identities written by ``project_to_neo4j``: ``(Neo4j label, id)`` per upserted row."""
+    keys: set[tuple[str, str]] = set()
+    for row in payload["documents"]:
+        keys.add(("Document", str(row["id"])))
+    for row in payload["chunks"]:
+        keys.add(("Chunk", str(row["id"])))
+    for row in payload["guests"]:
+        keys.add(("Guest", str(row["id"])))
+    for row in payload["tags"]:
+        keys.add(("Tag", str(row["id"])))
+    for row in payload["concepts"]:
+        keys.add(("Concept", str(row["id"])))
+    for row in payload["frameworks"]:
+        keys.add(("Framework", str(row["id"])))
+    return keys
+
+
+def projection_identity_relationship_keys(payload: ProjectionPayload) -> set[tuple[str, str, str, str]]:
+    """Relationship identities: ``(type, start_id, end_id, normalized_props_json)`` matching projection rollup."""
+    chunk_to_document = {str(c["id"]): str(c["document_id"]) for c in payload["chunks"]}
+    rels: set[tuple[str, str, str, str]] = set()
+    for row in payload["chunks"]:
+        rels.add(("PART_OF", str(row["id"]), str(row["document_id"]), projection_rel_props_key({})))
+    for e in build_features_guest_edges(payload["document_guests"]):
+        rels.add(
+            (
+                e["rel_type"],
+                e["start_id"],
+                e["end_id"],
+                projection_rel_props_key(e["properties"]),
+            )
+        )
+    for e in build_has_tag_edges(payload["document_tags"]):
+        rels.add(
+            (
+                e["rel_type"],
+                e["start_id"],
+                e["end_id"],
+                projection_rel_props_key(e["properties"]),
+            )
+        )
+    for e in build_mentions_concept_edges(payload["chunk_concepts"], chunk_to_document):
+        rels.add(
+            (
+                e["rel_type"],
+                e["start_id"],
+                e["end_id"],
+                projection_rel_props_key(e["properties"]),
+            )
+        )
+    for e in build_uses_framework_edges(payload["chunk_frameworks"], chunk_to_document):
+        rels.add(
+            (
+                e["rel_type"],
+                e["start_id"],
+                e["end_id"],
+                projection_rel_props_key(e["properties"]),
+            )
+        )
+    for e in build_related_to_edges(payload["chunk_concepts"], chunk_to_document):
+        rels.add(
+            (
+                e["rel_type"],
+                e["start_id"],
+                e["end_id"],
+                projection_rel_props_key(e["properties"]),
+            )
+        )
+    return rels
