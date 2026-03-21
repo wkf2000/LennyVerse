@@ -1,6 +1,257 @@
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
+import pytest
+
 from ingest import neo4j_projector as np
+
+
+def _minimal_payload(**overrides: object) -> np.ProjectionPayload:
+    base: np.ProjectionPayload = {
+        "documents": [],
+        "chunks": [],
+        "guests": [],
+        "tags": [],
+        "concepts": [],
+        "frameworks": [],
+        "document_guests": [],
+        "document_tags": [],
+        "chunk_concepts": [],
+        "chunk_frameworks": [],
+    }
+    merged = {**base, **overrides}  # type: ignore[arg-type]
+    return merged  # type: ignore[return-value]
+
+
+def _session_context(mock_session: MagicMock) -> MagicMock:
+    cm = MagicMock()
+    cm.__enter__.return_value = mock_session
+    cm.__exit__.return_value = None
+    return cm
+
+
+@pytest.fixture
+def mock_neo4j_driver() -> MagicMock:
+    mock_session = MagicMock()
+    mock_driver = MagicMock()
+    mock_driver.session.return_value = _session_context(mock_session)
+    return mock_driver
+
+
+def test_project_to_neo4j_runs_constraints_before_any_unwind_upserts(
+    mock_neo4j_driver: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NEO4J_PROJECTION_BATCH_SIZE", "50")
+    mock_session = mock_neo4j_driver.session.return_value.__enter__.return_value
+    queries: list[str] = []
+    mock_session.run.side_effect = lambda q, *a, **k: queries.append(q)
+
+    docs = [
+        {
+            "id": f"doc:{i}",
+            "source_type": "newsletter",
+            "source_slug": f"post-{i}",
+            "title": f"T{i}",
+            "published_at": None,
+            "word_count": 10,
+            "description": "",
+            "checksum": "x",
+            "ingested_at": "t",
+            "updated_at": "t",
+            "path": "/p",
+        }
+        for i in range(3)
+    ]
+    chunks = [
+        {
+            "id": f"chunk:p{i}:0",
+            "document_id": f"doc:{i}",
+            "chunk_index": 0,
+            "content": "hello",
+            "token_count": 1,
+            "metadata": {},
+            "embedding": None,
+        }
+        for i in range(3)
+    ]
+    payload = _minimal_payload(documents=docs, chunks=chunks)
+
+    with patch.object(np, "_connect_driver", return_value=mock_neo4j_driver):
+        np.project_to_neo4j(payload)
+
+    constraint_indices = [i for i, q in enumerate(queries) if "CONSTRAINT" in q.upper()]
+    unwind_indices = [i for i, q in enumerate(queries) if "UNWIND" in q.upper()]
+    assert constraint_indices, "expected constraint statements"
+    assert unwind_indices, "expected batched UNWIND upserts"
+    assert max(constraint_indices) < min(unwind_indices)
+
+
+def test_project_to_neo4j_batches_node_upserts_by_batch_size(
+    mock_neo4j_driver: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NEO4J_PROJECTION_BATCH_SIZE", "2")
+    mock_session = mock_neo4j_driver.session.return_value.__enter__.return_value
+    queries: list[str] = []
+    mock_session.run.side_effect = lambda q, *a, **k: queries.append(q)
+
+    docs = [
+        {
+            "id": f"doc:{i}",
+            "source_type": "newsletter",
+            "source_slug": f"post-{i}",
+            "title": f"T{i}",
+            "published_at": None,
+            "word_count": 10,
+            "description": "",
+            "checksum": "x",
+            "ingested_at": "t",
+            "updated_at": "t",
+            "path": "/p",
+        }
+        for i in range(5)
+    ]
+    payload = _minimal_payload(documents=docs)
+
+    with patch.object(np, "_connect_driver", return_value=mock_neo4j_driver):
+        np.project_to_neo4j(payload)
+
+    doc_merges = [q for q in queries if "MERGE (n:Document" in q.replace("\n", " ")]
+    assert len(doc_merges) == 3
+
+
+def test_project_to_neo4j_batches_relationship_upserts(
+    mock_neo4j_driver: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NEO4J_PROJECTION_BATCH_SIZE", "2")
+    mock_session = mock_neo4j_driver.session.return_value.__enter__.return_value
+    queries: list[str] = []
+    mock_session.run.side_effect = lambda q, *a, **k: queries.append(q)
+
+    payload = _minimal_payload(
+        documents=[
+            {
+                "id": "doc:a",
+                "source_type": "newsletter",
+                "source_slug": "a",
+                "title": "A",
+                "published_at": None,
+                "word_count": 1,
+                "description": "",
+                "checksum": "x",
+                "ingested_at": "t",
+                "updated_at": "t",
+                "path": "/p",
+            }
+        ],
+        chunks=[
+            {
+                "id": "chunk:a:0",
+                "document_id": "doc:a",
+                "chunk_index": 0,
+                "content": "c",
+                "token_count": 1,
+                "metadata": {},
+                "embedding": None,
+            },
+            {
+                "id": "chunk:a:1",
+                "document_id": "doc:a",
+                "chunk_index": 1,
+                "content": "d",
+                "token_count": 1,
+                "metadata": {},
+                "embedding": None,
+            },
+            {
+                "id": "chunk:a:2",
+                "document_id": "doc:a",
+                "chunk_index": 2,
+                "content": "e",
+                "token_count": 1,
+                "metadata": {},
+                "embedding": None,
+            },
+        ],
+    )
+
+    with patch.object(np, "_connect_driver", return_value=mock_neo4j_driver):
+        np.project_to_neo4j(payload)
+
+    part_of = [q for q in queries if "PART_OF" in q and "UNWIND" in q]
+    assert len(part_of) == 2
+
+
+def test_project_to_neo4j_clear_first_runs_after_constraints_before_upserts(
+    mock_neo4j_driver: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NEO4J_PROJECTION_BATCH_SIZE", "50")
+    mock_session = mock_neo4j_driver.session.return_value.__enter__.return_value
+    queries: list[str] = []
+    mock_session.run.side_effect = lambda q, *a, **k: queries.append(q)
+
+    payload = _minimal_payload(
+        documents=[
+            {
+                "id": "doc:x",
+                "source_type": "newsletter",
+                "source_slug": "x",
+                "title": "X",
+                "published_at": None,
+                "word_count": 1,
+                "description": "",
+                "checksum": "x",
+                "ingested_at": "t",
+                "updated_at": "t",
+                "path": "/p",
+            }
+        ]
+    )
+
+    with patch.object(np, "_connect_driver", return_value=mock_neo4j_driver):
+        np.project_to_neo4j(payload, clear_first=True)
+
+    clear_idx = next(i for i, q in enumerate(queries) if "DETACH DELETE" in q)
+    last_constraint = max(i for i, q in enumerate(queries) if "CONSTRAINT" in q.upper())
+    first_unwind = next(i for i, q in enumerate(queries) if "UNWIND" in q)
+    assert last_constraint < clear_idx < first_unwind
+
+
+def test_project_to_neo4j_returns_counts_and_elapsed_ms(
+    mock_neo4j_driver: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NEO4J_PROJECTION_BATCH_SIZE", "50")
+    mock_session = mock_neo4j_driver.session.return_value.__enter__.return_value
+    mock_session.run.return_value = None
+
+    payload = _minimal_payload(
+        documents=[
+            {
+                "id": "doc:z",
+                "source_type": "newsletter",
+                "source_slug": "z",
+                "title": "Z",
+                "published_at": None,
+                "word_count": 1,
+                "description": "",
+                "checksum": "x",
+                "ingested_at": "t",
+                "updated_at": "t",
+                "path": "/p",
+            }
+        ],
+        guests=[{"id": "guest:amy", "name": "Amy", "profile": {}}],
+        document_guests=[{"document_id": "doc:z", "guest_id": "guest:amy", "role": "", "confidence": 1.0}],
+    )
+
+    with patch.object(np, "_connect_driver", return_value=mock_neo4j_driver):
+        stats = np.project_to_neo4j(payload)
+
+    assert stats["documents"] == 1
+    assert stats["guests"] == 1
+    assert stats["rels_features_guest"] == 1
+    assert "elapsed_ms" in stats
+    assert stats["elapsed_ms"] >= 0
 
 
 def test_projector_module_imports() -> None:
