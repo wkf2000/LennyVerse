@@ -13,6 +13,7 @@ The ingest pipeline reads markdown from disk, chunks and embeds content, writes 
   - `OLLAMA_LLM_BASE_URL`, `INGEST_EXTRACT_MODEL` — extraction stage (`extract`)
   - (optional fallback) `OLLAMA_BASE_URL` — used if specific embed/LLM URL vars are unset
   - `SUPABASE_URL` and `SUPABASE_SECRET_KEY` (or `SUPABASE_KEY`) — load stage
+  - `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` — `project` stage and `rebuild-graph` (local Neo4j; see `.env.example`)
 
 ### Run
 
@@ -75,8 +76,20 @@ When the `extract` stage runs, the pipeline performs deterministic metadata extr
 
 Extraction artifacts are written to `extractions.json` in the output directory.
 
-### Other commands
+### Neo4j projection (`project` stage)
+
+When `project` is included in `--stages` (the default), the pipeline upserts documents, chunks, entities, and relationships into **Neo4j** after a successful `load`. If projection fails, the run exits non-zero and the local checkpoint is not advanced for that run.
+
+- Optional tuning: `NEO4J_PROJECTION_BATCH_SIZE` (default `500`).
+
+Graph shape (chunk nodes, `PART_OF`, rollups, `RELATED_TO`) is documented in [`docs/data-foundation-layer-design.md`](docs/data-foundation-layer-design.md).
+
+### Rebuild graph from canonical Supabase
+
+`rebuild-graph` does **not** read local markdown. It fetches canonical rows from Supabase (same tables the loader writes), clears in-scope Neo4j labels, then runs a full projection. Use this after schema or projection logic changes, or to fix drift.
 
 ```bash
-uv run python -m ingest rebuild-graph --output data/ingest-output
+uv run python -m ingest rebuild-graph
 ```
+
+Prints JSON stats on stdout; exits `1` on Supabase read errors or Neo4j errors. If you pass `--output`, it is ignored (compatibility only; a warning is logged).

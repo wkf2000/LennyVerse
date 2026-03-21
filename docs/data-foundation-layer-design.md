@@ -1,8 +1,8 @@
 # LennyVerse Data/Foundation Layer Design
 
-Date: 2026-03-20  
+Date: 2026-03-20 (Neo4j projection: aligned with implementation 2026-03-21)  
 Scope: P0-first foundation with extension points for P1  
-Status: Approved direction (Option A)
+Status: Approved direction (Option A); Neo4j `project` / `rebuild-graph` implemented in ingestion CLI
 
 ## 1) Core Architecture and Boundaries
 
@@ -60,9 +60,12 @@ Return:
 
 ### Neo4j projection model
 
+The graph includes everything needed for document-level exploration plus chunk linkage for rollup semantics. Stable IDs match Postgres row IDs (see below).
+
 Node labels:
 
-- `Document {id}`
+- `Document {id, …}` — same stable `id` as Postgres; large fields such as `raw_markdown` are omitted on the graph node to keep writes small.
+- `Chunk {id, …}` — one node per canonical chunk; links to its document via `PART_OF`.
 - `Guest {id}`
 - `Tag {id}`
 - `Concept {id}`
@@ -70,11 +73,12 @@ Node labels:
 
 Relationships:
 
+- `(Chunk)-[:PART_OF]->(Document)`
 - `(Document)-[:FEATURES_GUEST]->(Guest)`
 - `(Document)-[:HAS_TAG]->(Tag)`
-- `(Document)-[:MENTIONS_CONCEPT {weight, evidence_count}]->(Concept)`
-- `(Document)-[:USES_FRAMEWORK {weight, evidence_count}]->(Framework)`
-- `(Concept)-[:RELATED_TO {weight, method}]->(Concept)`
+- `(Document)-[:MENTIONS_CONCEPT {weight, evidence_count}]->(Concept)` — rolled up from `chunk_concepts` (sum of confidences, distinct-chunk evidence count).
+- `(Document)-[:USES_FRAMEWORK {weight, evidence_count}]->(Framework)` — rolled up from `chunk_frameworks` the same way.
+- `(Concept)-[:RELATED_TO {weight, method}]->(Concept)` — co-occurrence within a document; `method` is fixed to `cooccurrence_p0`; one directed edge per unordered pair with lexical ordering on concept IDs.
 
 Constraints:
 
@@ -94,11 +98,13 @@ Use these IDs in both Postgres and Neo4j projections.
 
 Ingestion is local/manual only. No CI/CD ingestion path is required.
 
+Invoke through **`uv run`** (see repo `AGENTS.md`), for example:
+
 ## CLI shape
 
-- `python -m ingest run --input data/inputs --since <date> --limit <n> --stages parse,chunk,embed,extract,load,project`
-- `python -m ingest backfill --source newsletter|podcast`
-- `python -m ingest rebuild-graph`
+- `uv run python -m ingest run --input data/inputs --since <date> --limit <n> --stages parse,chunk,embed,extract,load,project`
+- `uv run python -m ingest backfill --source newsletter|podcast`
+- `uv run python -m ingest rebuild-graph` — reads canonical rows from **Supabase** (same tables as load), clears in-scope Neo4j labels, then full reproject. Prints JSON on stdout; exits non-zero on fetch or projection failure. Legacy `--output`, if passed, is ignored (warning only).
 
 ## Stage flow
 
@@ -107,14 +113,23 @@ Ingestion is local/manual only. No CI/CD ingestion path is required.
 3. Embed chunks (skip unchanged content by hash/checksum).
 4. Extract concepts/framework mentions with confidence and evidence.
 5. Load Postgres canonical entities and joins in transactions.
-6. Project to Neo4j via idempotent upserts.
+6. **Project** to Neo4j: idempotent `MERGE` upserts; optional `clear_first` only on `rebuild-graph`.
 
 ## Re-run and failure semantics
 
 - Idempotent by stable IDs and upsert patterns.
 - Document-level incremental updates on checksum changes.
 - Stage-level checkpoints and resumability.
-- Rebuildable graph projection from canonical Postgres data.
+- **When `project` is in the stage list:** checkpoint is updated only after a **successful** projection; projection failure is **fail-run** (process exits non-zero). `last_run.json` may record `projection_error` before exit.
+- **Rebuild:** full graph refresh for in-scope labels via clear + reproject from canonical Supabase reads (not from local markdown).
+
+### Neo4j configuration (ingestion)
+
+- `NEO4J_URI` (default `bolt://127.0.0.1:7687`), `NEO4J_USER`, `NEO4J_PASSWORD`
+- `NEO4J_PROJECTION_BATCH_SIZE` (default `500`)
+- Optional: `SUPABASE_FETCH_PAGE_SIZE` for paginated canonical reads during `rebuild-graph`
+
+Full projection contracts (rebuild clear semantics, numeric rollups, acceptance-style guarantees) live in [`superpowers/specs/2026-03-21-neo4j-ingestion-design.md`](superpowers/specs/2026-03-21-neo4j-ingestion-design.md).
 
 ## 4) Query Patterns and API Contracts
 
@@ -169,6 +184,7 @@ Ingestion is local/manual only. No CI/CD ingestion path is required.
 
 - unit tests: parsing, chunking determinism, ID generation
 - integration tests: fixture corpus -> full pipeline -> idempotent rerun
+- Neo4j projection: rollup and orchestration tests with mocked driver (no live DB required in CI)
 - query contract tests: response shape, filters, citation guarantees
 
 ### P0 non-goals
@@ -195,7 +211,7 @@ Data ingestion runs on local/dev computer only, no Docker no cloud.
 
 ### AI/embedding plane
 
-- external embedding API for MVP speed (Google Gemini embedding model)
+- local embeddings and extraction via **Ollama** (configurable models; see `.env.example` and README)
 
 ### Ingestion plane
 

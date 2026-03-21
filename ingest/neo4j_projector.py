@@ -73,8 +73,25 @@ def _clear_projection_scope(session: Any) -> None:
     )
 
 
+def _neo4j_property_value(value: Any) -> Any:
+    """Neo4j node/rel properties must be primitives or arrays of primitives — not nested maps."""
+    if isinstance(value, Mapping):
+        return json.dumps(dict(value), sort_keys=True, ensure_ascii=True, default=str)
+    if isinstance(value, (list, tuple)):
+        seq = list(value)
+        if any(isinstance(x, Mapping) for x in seq):
+            return json.dumps(seq, sort_keys=True, ensure_ascii=True, default=str)
+        return seq
+    return value
+
+
 def _props_for_node(row: Mapping[str, Any], *, skip: frozenset[str]) -> dict[str, Any]:
-    return {k: v for k, v in row.items() if k not in skip and v is not None}
+    out: dict[str, Any] = {}
+    for k, v in row.items():
+        if k in skip or v is None:
+            continue
+        out[k] = _neo4j_property_value(v)
+    return out
 
 
 def _upsert_labeled_nodes_batched(
