@@ -4,7 +4,17 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from ingest.pipeline import build_chunks, parse_document, run_pipeline
+from ingest.extractor import ChunkExtractionResult
+from ingest.pipeline import (
+    build_chunks,
+    normalize_entity_name,
+    parse_document,
+    run_pipeline,
+    stable_concept_id,
+    stable_framework_id,
+    stable_guest_id,
+    stable_tag_id,
+)
 
 
 def _write_fixture(path: Path, body_word_count: int = 35) -> None:
@@ -155,3 +165,141 @@ def test_embed_texts_empty_input_returns_empty() -> None:
 
     assert result == []
     fake_embeddings.embed_documents.assert_not_called()
+
+
+def test_entity_id_normalization_is_stable() -> None:
+    assert normalize_entity_name("  Design   Partner  ") == "Design Partner"
+    assert stable_guest_id("Lenny Rachitsky") == "guest:lenny-rachitsky"
+    assert stable_tag_id("market research") == "tag:market-research"
+    assert stable_concept_id("distribution moat") == "concept:distribution-moat"
+    assert stable_framework_id("build trap") == "framework:build-trap"
+
+
+def test_extract_stage_writes_entity_artifacts(tmp_path: Path) -> None:
+    input_dir = tmp_path / "inputs"
+    output_dir = tmp_path / "out"
+    input_dir.mkdir()
+    (input_dir / "post.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "source_type: newsletter",
+                "source_slug: lenny-entities",
+                "title: Entity Test",
+                "published_at: 2026-03-20T00:00:00+00:00",
+                "description: fixture",
+                "guests: Jane Doe, John Roe",
+                "tags: Product, AI",
+                "---",
+                "A chunk describing jobs-to-be-done and RICE prioritization.",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_load = MagicMock(return_value={"ok": 1})
+    fake_extract = ChunkExtractionResult(
+        concepts=[
+            {
+                "name": "Jobs To Be Done",
+                "confidence": 0.9,
+                "evidence_span": "jobs-to-be-done",
+                "description": "Outcome-driven product framing.",
+            }
+        ],
+        frameworks=[
+            {
+                "name": "RICE",
+                "confidence": 0.8,
+                "evidence_span": "RICE prioritization",
+                "summary": "Reach, impact, confidence, effort.",
+            }
+        ],
+    )
+
+    with (
+        patch("ingest.pipeline.extract_chunk_signals", return_value=fake_extract),
+        patch("ingest.pipeline.load_documents_and_chunks", fake_load),
+    ):
+        run = run_pipeline(
+            input_dir=input_dir,
+            output_dir=output_dir,
+            stages=("parse", "chunk", "extract", "load"),
+        )
+
+    assert run["counts"]["guests_extracted"] == 2
+    assert run["counts"]["tags_extracted"] == 2
+    assert run["counts"]["concepts_extracted"] == 1
+    assert run["counts"]["frameworks_extracted"] == 1
+    assert run["counts"]["extraction_errors"] == 0
+
+    assert fake_load.call_count == 1
+    kwargs = fake_load.call_args.kwargs
+    assert len(kwargs["guests"]) == 2
+    assert len(kwargs["tags"]) == 2
+    assert len(kwargs["concepts"]) == 1
+    assert len(kwargs["frameworks"]) == 1
+    assert len(kwargs["chunk_concepts"]) == 1
+    assert len(kwargs["chunk_frameworks"]) == 1
+    assert len(kwargs["document_guests"]) == 2
+    assert len(kwargs["document_tags"]) == 2
+
+    extraction_artifact = json.loads((output_dir / "extractions.json").read_text(encoding="utf-8"))
+    assert len(extraction_artifact["guests"]) == 2
+    assert len(extraction_artifact["concepts"]) == 1
+    assert extraction_artifact["errors"] == []
+
+
+def test_invalid_extraction_is_recorded_not_fatal(tmp_path: Path) -> None:
+    input_dir = tmp_path / "inputs"
+    output_dir = tmp_path / "out"
+    input_dir.mkdir()
+    _write_fixture(input_dir / "post.md", body_word_count=30)
+
+    with patch(
+        "ingest.pipeline.extract_chunk_signals",
+        return_value=ChunkExtractionResult(concepts=[], frameworks=[], error="mock parse failure"),
+    ):
+        run = run_pipeline(
+            input_dir=input_dir,
+            output_dir=output_dir,
+            stages=("parse", "chunk", "extract"),
+        )
+
+    assert run["counts"]["processed_documents"] == 1
+    assert run["counts"]["extraction_errors"] > 0
+    extraction_artifact = json.loads((output_dir / "extractions.json").read_text(encoding="utf-8"))
+    assert len(extraction_artifact["errors"]) > 0
+
+
+def test_extract_load_rerun_is_idempotent(tmp_path: Path) -> None:
+    input_dir = tmp_path / "inputs"
+    output_dir = tmp_path / "out"
+    input_dir.mkdir()
+    _write_fixture(input_dir / "post.md", body_word_count=40)
+
+    fake_extract = ChunkExtractionResult(
+        concepts=[{"name": "North Star Metric", "confidence": 0.7, "evidence_span": "", "description": ""}],
+        frameworks=[],
+    )
+    fake_load = MagicMock(return_value={"ok": 1})
+
+    with (
+        patch("ingest.pipeline.extract_chunk_signals", return_value=fake_extract),
+        patch("ingest.pipeline.load_documents_and_chunks", fake_load),
+    ):
+        first = run_pipeline(
+            input_dir=input_dir,
+            output_dir=output_dir,
+            stages=("parse", "chunk", "extract", "load"),
+        )
+        second = run_pipeline(
+            input_dir=input_dir,
+            output_dir=output_dir,
+            stages=("parse", "chunk", "extract", "load"),
+        )
+
+    assert first["counts"]["processed_documents"] == 1
+    assert second["counts"]["processed_documents"] == 0
+    assert fake_load.call_count == 1

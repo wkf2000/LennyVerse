@@ -9,7 +9,9 @@ The ingest pipeline reads markdown from disk, chunks and embeds content, writes 
 
 - [uv](https://github.com/astral-sh/uv) for Python.
 - A `.env` in the repo root (copy from `.env.example`). For a full run you need at least:
-  - `GEMINI_API_KEY` — embeddings
+  - `OLLAMA_EMBED_BASE_URL`, `EMBEDDING_MODEL` — embeddings
+  - `OLLAMA_LLM_BASE_URL`, `INGEST_EXTRACT_MODEL` — extraction stage (`extract`)
+  - (optional fallback) `OLLAMA_BASE_URL` — used if specific embed/LLM URL vars are unset
   - `SUPABASE_URL` and `SUPABASE_SECRET_KEY` (or `SUPABASE_KEY`) — load stage
 
 ### Run
@@ -45,6 +47,9 @@ uv run python -m ingest run --force
 # Parse + chunk only (no API calls)
 uv run python -m ingest run --stages parse,chunk
 
+# Parse + chunk + extract + load (entities + joins)
+uv run python -m ingest run --stages parse,chunk,extract,load
+
 # Backfill one source type
 uv run python -m ingest backfill --source newsletter --force
 ```
@@ -53,10 +58,22 @@ uv run python -m ingest backfill --source newsletter --force
 
 When the `chunk` stage runs, window size and overlap are read from the environment or `.env`:
 
-- `INGEST_CHUNK_SIZE_WORDS` (default `220`)
-- `INGEST_CHUNK_OVERLAP_WORDS` (default `0`; must be smaller than chunk size)
+- `INGEST_CHUNK_SIZE_CHARS` (default `1000`)
+- `INGEST_CHUNK_OVERLAP_CHARS` (default `200`; must be smaller than chunk size)
 
-Embeddings are sent in batches (`INGEST_EMBED_BATCH_SIZE`, default `32`) with one API call per batch. See `.env.example` for batch size, throttling (`INGEST_EMBED_MIN_INTERVAL_SEC`), and other ingest-related variables.
+Embeddings are sent in batches (`INGEST_EMBED_BATCH_SIZE`, default `32`) with one API call per batch.
+
+### Extraction (environment)
+
+When the `extract` stage runs, the pipeline performs deterministic metadata extraction for guests/tags and Ollama-backed structured extraction for concepts/frameworks:
+
+- `INGEST_EXTRACT_MODEL` (default `llama3.1:8b`)
+- `INGEST_EXTRACT_RETRIES` (default `2`)
+- `INGEST_EXTRACT_TEMPERATURE` (default `0`)
+- `INGEST_EXTRACT_TIMEOUT_SEC` (default `30`)
+- `INGEST_EXTRACT_MAX_CHARS` (default `2500`)
+
+Extraction artifacts are written to `extractions.json` in the output directory.
 
 ### Other commands
 

@@ -10,7 +10,7 @@ load_dotenv()
 
 
 def _load_embeddings() -> OllamaEmbeddings:
-    base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    base_url = os.getenv("OLLAMA_EMBED_BASE_URL") or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     model = os.getenv("EMBEDDING_MODEL", "qwen3-embedding:0.6b")
 
     logging.info(f"Loading embeddings from {base_url} with model {model}")

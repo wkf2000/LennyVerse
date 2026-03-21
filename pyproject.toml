@@ -12,6 +12,7 @@ dependencies = [
     "langchain-ollama>=0.3.0",
     "python-dotenv>=1.0.0",
     "supabase>=2.28.3",
+    "pydantic>=2.12.5",
 ]
 
 [project.optional-dependencies]

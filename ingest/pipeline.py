@@ -12,6 +12,7 @@ from typing import Any
 from langchain_text_splitters import MarkdownTextSplitter
 
 from ingest.embedder import embed_batch_size, embed_texts
+from ingest.extractor import extract_chunk_signals
 from ingest.supabase_loader import load_documents_and_chunks
 
 STAGES = ("parse", "chunk", "embed", "extract", "load", "project")
@@ -54,6 +55,7 @@ class ParsedDocument:
     ingested_at: str
     updated_at: str
     path: str
+    metadata: dict[str, str]
 
 
 @dataclass(frozen=True)
@@ -65,6 +67,13 @@ class ChunkRecord:
     token_count: int
     metadata: dict[str, Any]
     embedding: list[float] | None = None
+
+
+@dataclass(frozen=True)
+class ExtractionError:
+    source_slug: str
+    chunk_id: str
+    message: str
 
 
 def slugify(value: str) -> str:
@@ -87,6 +96,56 @@ def stable_doc_id(source_slug: str) -> str:
 
 def stable_chunk_id(source_slug: str, chunk_index: int) -> str:
     return f"chunk:{source_slug}:{chunk_index}"
+
+
+def stable_guest_id(name: str) -> str:
+    return f"guest:{slugify(name)}"
+
+
+def stable_tag_id(name: str) -> str:
+    return f"tag:{slugify(name)}"
+
+
+def stable_concept_id(name: str) -> str:
+    return f"concept:{slugify(name)}"
+
+
+def stable_framework_id(name: str) -> str:
+    return f"framework:{slugify(name)}"
+
+
+def normalize_entity_name(value: str) -> str:
+    return " ".join(value.strip().split())
+
+
+def _split_metadata_values(raw: str) -> list[str]:
+    value = raw.strip()
+    if not value:
+        return []
+    if value.startswith("[") and value.endswith("]"):
+        inner = value[1:-1].strip()
+        if not inner:
+            return []
+        return [normalize_entity_name(part.strip().strip("'").strip('"')) for part in inner.split(",")]
+    parts = [part.strip() for part in value.replace("|", ",").split(",")]
+    return [normalize_entity_name(part) for part in parts if normalize_entity_name(part)]
+
+
+def _metadata_values(metadata: dict[str, str], keys: tuple[str, ...]) -> list[str]:
+    values: list[str] = []
+    for key in keys:
+        raw = metadata.get(key)
+        if raw:
+            values.extend(_split_metadata_values(raw))
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for value in values:
+        lowered = value.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        deduped.append(value)
+    return deduped
 
 
 def sha256_text(value: str) -> str:
@@ -138,6 +197,7 @@ def parse_document(path: Path) -> ParsedDocument:
         ingested_at=now,
         updated_at=now,
         path=str(path),
+        metadata=metadata,
     )
 
 
@@ -242,7 +302,7 @@ def run_pipeline(
     logger.info("Stages: %s", ", ".join(stages))
 
     chunk_size_chars, chunk_overlap_chars = 1000, 200
-    if "chunk" in stages:
+    if "chunk" in stages or "extract" in stages:
         chunk_size_chars, chunk_overlap_chars = chunk_params_from_env()
         logger.info("Chunking: size_chars=%d overlap_chars=%d", chunk_size_chars, chunk_overlap_chars)
 
@@ -255,6 +315,15 @@ def run_pipeline(
     all_chunks: list[ChunkRecord] = []
     processed_docs: list[ParsedDocument] = []
     pending_state_updates: dict[str, dict[str, str]] = {}
+    guest_rows_by_id: dict[str, dict[str, Any]] = {}
+    tag_rows_by_id: dict[str, dict[str, Any]] = {}
+    concept_rows_by_id: dict[str, dict[str, Any]] = {}
+    framework_rows_by_id: dict[str, dict[str, Any]] = {}
+    document_guest_rows_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    document_tag_rows_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    chunk_concept_rows_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    chunk_framework_rows_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    extraction_errors: list[ExtractionError] = []
 
     total_docs = len(docs)
     for doc_index, doc in enumerate(docs, start=1):
@@ -284,8 +353,9 @@ def run_pipeline(
             doc.title,
         )
         processed_docs.append(doc)
+        chunks: list[ChunkRecord] = []
 
-        if "chunk" in stages:
+        if "chunk" in stages or "extract" in stages:
             chunks = build_chunks(
                 doc,
                 chunk_size=chunk_size_chars,
@@ -316,8 +386,118 @@ def run_pipeline(
                         done = idx + 1
                         if done == 1 or done == n_chunks or done % step == 0:
                             logger.info("    chunk %d/%d", done, n_chunks)
-            all_chunks.extend(chunks)
-            stage_stats["chunk"]["processed"] += 1
+            if "chunk" in stages:
+                all_chunks.extend(chunks)
+                stage_stats["chunk"]["processed"] += 1
+
+        if "extract" in stages:
+            metadata_guests = _metadata_values(doc.metadata, ("guests", "guest"))
+            metadata_tags = _metadata_values(doc.metadata, ("tags", "tag", "topics"))
+
+            for guest_name in metadata_guests:
+                guest_id = stable_guest_id(guest_name)
+                guest_rows_by_id[guest_id] = {
+                    "id": guest_id,
+                    "name": guest_name,
+                    "profile": {},
+                }
+                document_guest_rows_by_key[(doc.id, guest_id)] = {
+                    "document_id": doc.id,
+                    "guest_id": guest_id,
+                    "role": "",
+                    "confidence": 1.0,
+                }
+
+            for tag_name in metadata_tags:
+                tag_id = stable_tag_id(tag_name.lower())
+                tag_rows_by_id[tag_id] = {
+                    "id": tag_id,
+                    "name": tag_name.lower(),
+                }
+                document_tag_rows_by_key[(doc.id, tag_id)] = {
+                    "document_id": doc.id,
+                    "tag_id": tag_id,
+                }
+
+            for chunk in chunks:
+                chunk_extract = extract_chunk_signals(
+                    title=doc.title,
+                    source_slug=doc.source_slug,
+                    chunk_text=chunk.content,
+                )
+                if chunk_extract.error:
+                    extraction_errors.append(
+                        ExtractionError(
+                            source_slug=doc.source_slug,
+                            chunk_id=chunk.id,
+                            message=chunk_extract.error,
+                        )
+                    )
+                    continue
+
+                for concept in chunk_extract.concepts:
+                    concept_name = normalize_entity_name(str(concept.get("name", "")))
+                    if not concept_name:
+                        continue
+                    concept_id = stable_concept_id(concept_name.lower())
+                    description = normalize_entity_name(str(concept.get("description", "")))
+                    concept_rows_by_id.setdefault(
+                        concept_id,
+                        {
+                            "id": concept_id,
+                            "name": concept_name.lower(),
+                            "normalized_name": concept_name.lower(),
+                            "description": description,
+                        },
+                    )
+                    if description and len(description) > len(concept_rows_by_id[concept_id]["description"]):
+                        concept_rows_by_id[concept_id]["description"] = description
+
+                    confidence = float(concept.get("confidence", 0.0))
+                    evidence_span = normalize_entity_name(str(concept.get("evidence_span", "")))
+                    key = (chunk.id, concept_id)
+                    previous = chunk_concept_rows_by_key.get(key)
+                    candidate = {
+                        "chunk_id": chunk.id,
+                        "concept_id": concept_id,
+                        "confidence": confidence,
+                        "evidence_span": evidence_span,
+                    }
+                    if previous is None or candidate["confidence"] >= previous["confidence"]:
+                        chunk_concept_rows_by_key[key] = candidate
+
+                for framework in chunk_extract.frameworks:
+                    framework_name = normalize_entity_name(str(framework.get("name", "")))
+                    if not framework_name:
+                        continue
+                    framework_id = stable_framework_id(framework_name.lower())
+                    summary = normalize_entity_name(str(framework.get("summary", "")))
+                    confidence = float(framework.get("confidence", 0.0))
+                    framework_rows_by_id.setdefault(
+                        framework_id,
+                        {
+                            "id": framework_id,
+                            "name": framework_name.lower(),
+                            "summary": summary,
+                            "confidence": confidence,
+                        },
+                    )
+                    if summary and len(summary) > len(framework_rows_by_id[framework_id]["summary"]):
+                        framework_rows_by_id[framework_id]["summary"] = summary
+                    if confidence > framework_rows_by_id[framework_id]["confidence"]:
+                        framework_rows_by_id[framework_id]["confidence"] = confidence
+
+                    evidence_span = normalize_entity_name(str(framework.get("evidence_span", "")))
+                    key = (chunk.id, framework_id)
+                    previous = chunk_framework_rows_by_key.get(key)
+                    candidate = {
+                        "chunk_id": chunk.id,
+                        "framework_id": framework_id,
+                        "confidence": confidence,
+                        "evidence_span": evidence_span,
+                    }
+                    if previous is None or candidate["confidence"] >= previous["confidence"]:
+                        chunk_framework_rows_by_key[key] = candidate
 
         for stage in ("embed", "extract", "load", "project"):
             if stage in stages:
@@ -358,6 +538,24 @@ def run_pipeline(
         }
         for chunk in all_chunks
     ]
+    extraction_payload: dict[str, Any] = {
+        "guests": sorted(guest_rows_by_id.values(), key=lambda row: row["id"]),
+        "tags": sorted(tag_rows_by_id.values(), key=lambda row: row["id"]),
+        "concepts": sorted(concept_rows_by_id.values(), key=lambda row: row["id"]),
+        "frameworks": sorted(framework_rows_by_id.values(), key=lambda row: row["id"]),
+        "document_guests": sorted(
+            document_guest_rows_by_key.values(), key=lambda row: (row["document_id"], row["guest_id"])
+        ),
+        "document_tags": sorted(document_tag_rows_by_key.values(), key=lambda row: (row["document_id"], row["tag_id"])),
+        "chunk_concepts": sorted(chunk_concept_rows_by_key.values(), key=lambda row: (row["chunk_id"], row["concept_id"])),
+        "chunk_frameworks": sorted(
+            chunk_framework_rows_by_key.values(), key=lambda row: (row["chunk_id"], row["framework_id"])
+        ),
+        "errors": [
+            {"source_slug": item.source_slug, "chunk_id": item.chunk_id, "message": item.message}
+            for item in extraction_errors
+        ],
+    }
 
     run_payload: dict[str, Any] = {
         "run_at": datetime.now(UTC).isoformat(),
@@ -368,22 +566,49 @@ def run_pipeline(
             "matched_documents": len(docs),
             "processed_documents": len(processed_docs),
             "chunks_created": len(all_chunks),
+            "guests_extracted": len(extraction_payload["guests"]),
+            "tags_extracted": len(extraction_payload["tags"]),
+            "concepts_extracted": len(extraction_payload["concepts"]),
+            "frameworks_extracted": len(extraction_payload["frameworks"]),
+            "extraction_errors": len(extraction_payload["errors"]),
         },
         "stage_stats": stage_stats,
     }
-    if "chunk" in stages:
+    if "chunk" in stages or "extract" in stages:
         run_payload["chunk_config"] = {
             "size_chars": chunk_size_chars,
             "overlap_chars": chunk_overlap_chars,
         }
 
-    if "load" in stages and (documents_payload or chunks_payload):
+    if "load" in stages and (
+        documents_payload
+        or chunks_payload
+        or extraction_payload["guests"]
+        or extraction_payload["tags"]
+        or extraction_payload["concepts"]
+        or extraction_payload["frameworks"]
+    ):
         logger.info(
-            "Loading to Supabase: %d document(s), %d chunk(s)",
+            "Loading to Supabase: %d document(s), %d chunk(s), %d guest(s), %d tag(s), %d concept(s), %d framework(s)",
             len(documents_payload),
             len(chunks_payload),
+            len(extraction_payload["guests"]),
+            len(extraction_payload["tags"]),
+            len(extraction_payload["concepts"]),
+            len(extraction_payload["frameworks"]),
         )
-        run_payload["load_result"] = load_documents_and_chunks(documents_payload, chunks_payload)
+        run_payload["load_result"] = load_documents_and_chunks(
+            documents_payload,
+            chunks_payload,
+            guests=extraction_payload["guests"],
+            tags=extraction_payload["tags"],
+            concepts=extraction_payload["concepts"],
+            frameworks=extraction_payload["frameworks"],
+            document_guests=extraction_payload["document_guests"],
+            document_tags=extraction_payload["document_tags"],
+            chunk_concepts=extraction_payload["chunk_concepts"],
+            chunk_frameworks=extraction_payload["chunk_frameworks"],
+        )
         logger.info("Load finished: %s", run_payload["load_result"])
     elif "load" in stages:
         logger.info("Load stage skipped — no documents or chunks to upsert")
@@ -393,6 +618,7 @@ def run_pipeline(
     logger.info("Writing artifacts to %s", output_dir)
     _write_json(output_dir / "documents.json", documents_payload)
     _write_json(output_dir / "chunks.json", chunks_payload)
+    _write_json(output_dir / "extractions.json", extraction_payload)
     _write_json(output_dir / "last_run.json", run_payload)
     _write_json(checkpoint_path, state)
 

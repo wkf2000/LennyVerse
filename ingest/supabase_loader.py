@@ -47,6 +47,15 @@ def _chunked(items: list[dict[str, Any]], size: int) -> list[list[dict[str, Any]
 def load_documents_and_chunks(
     documents: list[dict[str, Any]],
     chunks: list[dict[str, Any]],
+    *,
+    guests: list[dict[str, Any]] | None = None,
+    tags: list[dict[str, Any]] | None = None,
+    concepts: list[dict[str, Any]] | None = None,
+    frameworks: list[dict[str, Any]] | None = None,
+    document_guests: list[dict[str, Any]] | None = None,
+    document_tags: list[dict[str, Any]] | None = None,
+    chunk_concepts: list[dict[str, Any]] | None = None,
+    chunk_frameworks: list[dict[str, Any]] | None = None,
     batch_size: int = 500,
 ) -> dict[str, int]:
     url, key = _supabase_credentials()
@@ -74,8 +83,29 @@ def load_documents_and_chunks(
         "metadata",
         "embedding",
     }
+    guest_fields = {"id", "name", "profile"}
+    tag_fields = {"id", "name"}
+    concept_fields = {"id", "name", "normalized_name", "description"}
+    framework_fields = {"id", "name", "summary", "confidence"}
+    document_guest_fields = {"document_id", "guest_id", "role", "confidence"}
+    document_tag_fields = {"document_id", "tag_id"}
+    chunk_concept_fields = {"chunk_id", "concept_id", "confidence", "evidence_span"}
+    chunk_framework_fields = {"chunk_id", "framework_id", "confidence", "evidence_span"}
+
     document_rows = [{k: v for k, v in row.items() if k in document_fields} for row in documents]
     chunk_rows = [{k: v for k, v in row.items() if k in chunk_fields} for row in chunks]
+    guest_rows = [{k: v for k, v in row.items() if k in guest_fields} for row in (guests or [])]
+    tag_rows = [{k: v for k, v in row.items() if k in tag_fields} for row in (tags or [])]
+    concept_rows = [{k: v for k, v in row.items() if k in concept_fields} for row in (concepts or [])]
+    framework_rows = [{k: v for k, v in row.items() if k in framework_fields} for row in (frameworks or [])]
+    document_guest_rows = [
+        {k: v for k, v in row.items() if k in document_guest_fields} for row in (document_guests or [])
+    ]
+    document_tag_rows = [{k: v for k, v in row.items() if k in document_tag_fields} for row in (document_tags or [])]
+    chunk_concept_rows = [{k: v for k, v in row.items() if k in chunk_concept_fields} for row in (chunk_concepts or [])]
+    chunk_framework_rows = [
+        {k: v for k, v in row.items() if k in chunk_framework_fields} for row in (chunk_frameworks or [])
+    ]
 
     if document_rows:
         logger.info("  upserting %d document row(s)", len(document_rows))
@@ -91,9 +121,47 @@ def load_documents_and_chunks(
             )
             sanitized = [{k: v for k, v in row.items() if k in chunk_fields} for row in page]
             supabase.table("chunks").upsert(sanitized, on_conflict="id").execute()
+    if guest_rows:
+        logger.info("  upserting %d guest row(s)", len(guest_rows))
+        supabase.table("guests").upsert(guest_rows, on_conflict="id").execute()
+    if tag_rows:
+        logger.info("  upserting %d tag row(s)", len(tag_rows))
+        supabase.table("tags").upsert(tag_rows, on_conflict="id").execute()
+    if concept_rows:
+        logger.info("  upserting %d concept row(s)", len(concept_rows))
+        supabase.table("concepts").upsert(concept_rows, on_conflict="id").execute()
+    if framework_rows:
+        logger.info("  upserting %d framework row(s)", len(framework_rows))
+        supabase.table("frameworks").upsert(framework_rows, on_conflict="id").execute()
+    if document_guest_rows:
+        logger.info("  upserting %d document_guest row(s)", len(document_guest_rows))
+        supabase.table("document_guests").upsert(
+            document_guest_rows,
+            on_conflict="document_id,guest_id",
+        ).execute()
+    if document_tag_rows:
+        logger.info("  upserting %d document_tag row(s)", len(document_tag_rows))
+        supabase.table("document_tags").upsert(document_tag_rows, on_conflict="document_id,tag_id").execute()
+    if chunk_concept_rows:
+        logger.info("  upserting %d chunk_concept row(s)", len(chunk_concept_rows))
+        supabase.table("chunk_concepts").upsert(chunk_concept_rows, on_conflict="chunk_id,concept_id").execute()
+    if chunk_framework_rows:
+        logger.info("  upserting %d chunk_framework row(s)", len(chunk_framework_rows))
+        supabase.table("chunk_frameworks").upsert(
+            chunk_framework_rows,
+            on_conflict="chunk_id,framework_id",
+        ).execute()
 
     return {
         "documents_upserted": len(document_rows),
         "chunks_upserted": len(chunk_rows),
+        "guests_upserted": len(guest_rows),
+        "tags_upserted": len(tag_rows),
+        "concepts_upserted": len(concept_rows),
+        "frameworks_upserted": len(framework_rows),
+        "document_guests_upserted": len(document_guest_rows),
+        "document_tags_upserted": len(document_tag_rows),
+        "chunk_concepts_upserted": len(chunk_concept_rows),
+        "chunk_frameworks_upserted": len(chunk_framework_rows),
     }
 
