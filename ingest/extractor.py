@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -68,6 +70,17 @@ def _extract_timeout_seconds() -> float:
         value = float(raw.strip())
     except ValueError as e:
         raise RuntimeError(f"Invalid INGEST_EXTRACT_TIMEOUT_SEC: {raw!r}") from e
+    return max(1.0, value)
+
+
+def _extract_hard_timeout_seconds() -> float:
+    raw = os.getenv("INGEST_EXTRACT_HARD_TIMEOUT_SEC", "")
+    if not raw.strip():
+        return _extract_timeout_seconds() + 5.0
+    try:
+        value = float(raw.strip())
+    except ValueError as e:
+        raise RuntimeError(f"Invalid INGEST_EXTRACT_HARD_TIMEOUT_SEC: {raw!r}") from e
     return max(1.0, value)
 
 
@@ -165,14 +178,70 @@ def _result_from_parsed(parsed: _ChunkExtraction) -> ChunkExtractionResult:
     return ChunkExtractionResult(concepts=concepts, frameworks=frameworks)
 
 
+def _coerce_raw_content_to_text(raw: Any) -> str:
+    if raw is None:
+        return ""
+    content = getattr(raw, "content", raw)
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+                continue
+            if isinstance(item, dict):
+                text = item.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "\n".join(parts)
+    return str(content)
+
+
+def _extract_json_blob(text: str) -> str | None:
+    fenced_match = re.search(r"```(?:json)?\s*(\{[\s\S]*\})\s*```", text, flags=re.IGNORECASE)
+    if fenced_match:
+        return fenced_match.group(1)
+
+    start = text.find("{")
+    end = text.rfind("}")
+    if start >= 0 and end > start:
+        return text[start : end + 1]
+    return None
+
+
+def _parse_structured_from_raw(raw: Any) -> _ChunkExtraction | None:
+    raw_text = _coerce_raw_content_to_text(raw).strip()
+    if not raw_text:
+        return None
+    candidates = [raw_text]
+    json_blob = _extract_json_blob(raw_text)
+    if json_blob and json_blob != raw_text:
+        candidates.append(json_blob)
+
+    for candidate in candidates:
+        try:
+            payload = json.loads(candidate)
+            return _ChunkExtraction.model_validate(payload)
+        except Exception:  # noqa: BLE001
+            continue
+    return None
+
+
 def _coerce_structured_result(result: dict[str, Any]) -> ChunkExtractionResult:
     parsed = result.get("parsed")
     parsing_error = result.get("parsing_error")
+    if isinstance(parsed, _ChunkExtraction):
+        return _result_from_parsed(parsed)
     if parsing_error is not None:
+        salvaged = _parse_structured_from_raw(result.get("raw"))
+        if salvaged is not None:
+            logger.warning("extract fallback recovered malformed structured output")
+            return _result_from_parsed(salvaged)
         raise RuntimeError(f"structured parsing error: {parsing_error}")
     if parsed is None:
         raise RuntimeError("structured parsing returned empty payload")
-    return _result_from_parsed(parsed)
+    return _result_from_parsed(_ChunkExtraction.model_validate(parsed))
 
 
 async def extract_chunk_signals_async(*, title: str, source_slug: str, chunk_text: str) -> ChunkExtractionResult:
@@ -190,7 +259,10 @@ async def extract_chunk_signals_async(*, title: str, source_slug: str, chunk_tex
 
     for attempt in range(1, attempts + 1):
         try:
-            result = await structured.ainvoke(prompt)
+            result = await asyncio.wait_for(
+                structured.ainvoke(prompt),
+                timeout=_extract_hard_timeout_seconds(),
+            )
             if not isinstance(result, dict):
                 raise RuntimeError(f"unexpected structured output type: {type(result)!r}")
             return _coerce_structured_result(result)
