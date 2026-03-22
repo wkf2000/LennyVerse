@@ -103,17 +103,43 @@ def extract_concurrency() -> int:
     return max(1, value)
 
 
+def _extract_reasoning() -> bool | None:
+    """ChatOllama reasoning/thinking mode (INGEST_EXTRACT_REASONING). Default False."""
+    raw = os.getenv("INGEST_EXTRACT_REASONING")
+    if raw is None or not raw.strip():
+        return False
+    lowered = raw.strip().lower()
+    if lowered in ("true", "1", "yes", "on"):
+        return True
+    if lowered in ("false", "0", "no", "off"):
+        return False
+    if lowered in ("default", "auto", "none"):
+        return None
+    raise RuntimeError(
+        f"Invalid INGEST_EXTRACT_REASONING: {raw!r} "
+        "(use true, false, or default/auto/none for model default)"
+    )
+
+
 def _build_runtime() -> ChatOllama:
     base_url = os.getenv("OLLAMA_LLM_BASE_URL") or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     model = _extract_model_name()
     temperature = _extract_temperature()
     timeout = _extract_timeout_seconds()
-    logger.info("Extractor: model=%s base_url=%s timeout=%.1fs", model, base_url, timeout)
+    reasoning = _extract_reasoning()
+    logger.info(
+        "Extractor: model=%s base_url=%s timeout=%.1fs reasoning=%s",
+        model,
+        base_url,
+        timeout,
+        reasoning,
+    )
     return ChatOllama(
         model=model,
         base_url=base_url,
         temperature=temperature,
         timeout=timeout,
+        reasoning=reasoning,
     )
 
 
