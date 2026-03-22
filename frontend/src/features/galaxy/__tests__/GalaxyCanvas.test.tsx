@@ -12,6 +12,7 @@ vi.mock("@react-three/fiber", () => ({
 
 vi.mock("@react-three/drei", () => ({
   OrbitControls: () => <div data-testid="mock-orbit-controls" />,
+  Stars: () => null,
 }));
 
 const SNAPSHOT: GalaxySnapshot = {
@@ -78,7 +79,8 @@ describe("GalaxyCanvas", () => {
     render(<GalaxyCanvas snapshot={SNAPSHOT} filters={defaultGalaxyFilters()} />);
 
     expect(screen.getByTestId("galaxy-canvas-shell")).toBeInTheDocument();
-    expect(screen.getByTestId("galaxy-scene-stats")).toHaveTextContent("Nodes: 2 | Edges: 1");
+    expect(screen.getByTestId("galaxy-scene-stats")).toHaveTextContent("2 stars");
+    expect(screen.getByTestId("galaxy-scene-stats")).toHaveTextContent("1 links");
     expect(screen.getByTestId("mock-canvas")).toBeInTheDocument();
   });
 

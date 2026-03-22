@@ -13,9 +13,12 @@ export function GalaxyFilterPanel({ facets, filters, onChange, onReset }: Galaxy
   const activeCount = filters.tags.size + filters.guests.size + filters.sourceTypes.size;
 
   return (
-    <aside className="galaxy-status" aria-label="Galaxy filters">
-      <h2>Filters</h2>
-      <p>Active: {activeCount}</p>
+    <aside className="galaxy-panel galaxy-filters" aria-label="Galaxy filters">
+      <h2 className="galaxy-panel__title">Filters</h2>
+      <p className="galaxy-filters__active">
+        <span className="galaxy-filters__active-label">Active filters</span>
+        <span className="galaxy-filters__active-count">{activeCount}</span>
+      </p>
       <FilterSelect
         label="Tags"
         options={facets.tags}
@@ -34,8 +37,8 @@ export function GalaxyFilterPanel({ facets, filters, onChange, onReset }: Galaxy
         selected={filters.sourceTypes}
         onChange={(next) => onChange({ ...filters, sourceTypes: next })}
       />
-      <button type="button" onClick={onReset}>
-        Reset Filters
+      <button type="button" className="lv-btn lv-btn--ghost" onClick={onReset}>
+        Reset filters
       </button>
     </aside>
   );

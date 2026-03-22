@@ -30,7 +30,7 @@ describe("GalaxyDetailDrawer", () => {
     render(<GalaxyDetailDrawer nodeId="doc:a" />);
 
     await waitFor(() => expect(screen.getByText("Alpha")).toBeInTheDocument());
-    expect(screen.getByText("Open full document")).toHaveAttribute("href", "/reader/doc:a");
+    expect(screen.getByText(/Tags:/)).toBeInTheDocument();
   });
 
   it("shows graceful error if detail fetch fails after retry", async () => {

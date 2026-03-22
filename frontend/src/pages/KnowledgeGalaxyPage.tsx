@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 
+import { PrdAppNavigation } from "@/components/PrdAppNavigation";
 import { GalaxyCanvas } from "@/features/galaxy/GalaxyCanvas";
 import { GalaxyDetailDrawer } from "@/features/galaxy/GalaxyDetailDrawer";
 import { GalaxyFilterPanel } from "@/features/galaxy/GalaxyFilterPanel";
@@ -20,24 +21,26 @@ export function KnowledgeGalaxyPage() {
   }, [snapshot, selectedNodeId]);
 
   return (
-    <main className="galaxy-page">
-      <header className="galaxy-header">
-        <h1 className="galaxy-title">Knowledge Galaxy</h1>
-        <p>Explore all documents as a true 3D constellation.</p>
-      </header>
+    <div className="lv-app">
+      <PrdAppNavigation />
+      <main className="galaxy-page">
+        <header className="galaxy-header">
+          <p className="galaxy-eyebrow">VIZ-1 · Data visualization</p>
+          <h1 className="galaxy-title">Knowledge Galaxy</h1>
+          <p className="galaxy-subtitle">638 documents as a living 3D constellation — zoom, filter, follow the threads.</p>
+        </header>
 
-      {loading ? (
-        <div className="galaxy-status">Loading galaxy snapshot...</div>
-      ) : error ? (
-        <div className="galaxy-status">
-          <p>Knowledge Galaxy is temporarily unavailable.</p>
-          <p>{error}</p>
-          <button type="button" onClick={() => void reload()}>
-            Retry
-          </button>
-        </div>
-      ) : snapshot ? (
-        <>
+        {loading ? (
+          <div className="galaxy-status galaxy-status--pulse">Loading galaxy snapshot…</div>
+        ) : error ? (
+          <div className="galaxy-status galaxy-status--error">
+            <p>Knowledge Galaxy is temporarily unavailable.</p>
+            <p>{error}</p>
+            <button type="button" className="lv-btn lv-btn--primary" onClick={() => void reload()}>
+              Retry
+            </button>
+          </div>
+        ) : snapshot ? (
           <section className="galaxy-layout">
             <GalaxyFilterPanel
               facets={snapshot.filter_facets}
@@ -45,29 +48,28 @@ export function KnowledgeGalaxyPage() {
               onChange={setFilters}
               onReset={() => setFilters(defaultGalaxyFilters())}
             />
-            <div>
+            <div className="galaxy-main-column">
               <GalaxyCanvas snapshot={snapshot} filters={filters} onSelectNode={setSelectedNodeId} />
-              <section className="galaxy-status" aria-live="polite">
+              <p className="galaxy-canvas-hint" aria-live="polite">
                 {selectedNode ? (
                   <>
-                    <strong>{selectedNode.title}</strong>
-                    <div>Source: {selectedNode.source_type}</div>
-                    <div>Tags: {selectedNode.tags.join(", ") || "None"}</div>
+                    Selected: <strong>{selectedNode.title}</strong>
+                    <span className="galaxy-canvas-hint__meta"> — see the right panel for full detail</span>
                   </>
                 ) : (
-                  "Select a node to inspect details."
+                  <>Drag to orbit · scroll to zoom · click a star to inspect</>
                 )}
-              </section>
+              </p>
             </div>
-            <div>
+            <div className="galaxy-side-column">
               <GalaxyDetailDrawer nodeId={selectedNodeId} />
               <GalaxyLegend />
             </div>
           </section>
-        </>
-      ) : (
-        <div className="galaxy-status">No data available.</div>
-      )}
-    </main>
+        ) : (
+          <div className="galaxy-status">No data available.</div>
+        )}
+      </main>
+    </div>
   );
 }

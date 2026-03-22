@@ -29,7 +29,7 @@ describe("GalaxyFilterPanel", () => {
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange.mock.calls[0][0].tags.has("ai")).toBe(true);
 
-    fireEvent.click(screen.getByText("Reset Filters"));
+    fireEvent.click(screen.getByText("Reset filters"));
     expect(onReset).toHaveBeenCalledTimes(1);
   });
 });

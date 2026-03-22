@@ -47,8 +47,8 @@ export function GalaxyDetailDrawer({ nodeId }: GalaxyDetailDrawerProps) {
   }, [nodeId]);
 
   return (
-    <aside className="galaxy-status" aria-label="Galaxy detail drawer">
-      <h2>Detail</h2>
+    <aside className="galaxy-panel galaxy-detail" aria-label="Galaxy detail drawer">
+      <h2 className="galaxy-panel__title">Document</h2>
       {!nodeId ? (
         <p>Select a node to inspect details.</p>
       ) : loading ? (
@@ -61,7 +61,6 @@ export function GalaxyDetailDrawer({ nodeId }: GalaxyDetailDrawerProps) {
           <div>Source: {detail.source_type}</div>
           <div>Guests: {detail.guest_names.join(", ") || "None"}</div>
           <div>Tags: {detail.tags.join(", ") || "None"}</div>
-          <a href={detail.reader_url}>Open full document</a>
         </>
       ) : (
         <p>No details available.</p>
