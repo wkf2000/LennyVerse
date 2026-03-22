@@ -93,3 +93,76 @@ uv run python -m ingest rebuild-graph
 ```
 
 Prints JSON stats on stdout; exits `1` on Supabase read errors or Neo4j errors. If you pass `--output`, it is ignored (compatibility only; a warning is logged).
+
+## Knowledge Galaxy (backend, frontend, snapshot)
+
+The **Knowledge Galaxy** UI loads graph data from the FastAPI backend. Snapshot JSON (precomputed layout + nodes/edges) is built when the snapshot endpoint runs against **Neo4j**, then written under `data/galaxy-snapshots/` by default.
+
+More detail: [`docs/knowledge-galaxy-runbook.md`](docs/knowledge-galaxy-runbook.md).
+
+### Prerequisites
+
+- Same **`.env`** as ingestion for **Neo4j** (`NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`, optional `NEO4J_DATABASE`).
+- **Neo4j must already contain the graph** (e.g. ingest with `project` stage, or `uv run python -m ingest rebuild-graph`).
+- **HTTP server for the API:** install once if needed:
+
+  ```bash
+  uv add uvicorn
+  ```
+
+Load env vars in the shell before starting the backend (for example `set -a && source .env && set +a` if your `.env` is valid for the shell, or export the variables you need).
+
+### Run the backend
+
+From the **repository root**:
+
+```bash
+uv run uvicorn backend.app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+To build snapshots from Neo4j (not only serve a static file), enable the topology source:
+
+```bash
+GALAXY_ENABLE_NEO4J_SOURCE=1 uv run uvicorn backend.app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+- **`GALAXY_SNAPSHOT_DIR`** — where JSON artifacts are written (default: `data/galaxy-snapshots`). Set to empty to disable writing files.
+- **`GALAXY_SNAPSHOT_PATH`** — if set and the file exists, the API **loads that JSON** and does **not** rebuild from Neo4j. Omit or unset for a fresh Neo4j-backed build.
+
+Health check: open `http://127.0.0.1:8000/docs` (FastAPI OpenAPI).
+
+### Generate / refresh the galaxy snapshot
+
+There is **no separate CLI** for snapshots; generation is triggered by calling the same endpoint the UI uses.
+
+1. Start the backend with **`GALAXY_ENABLE_NEO4J_SOURCE=1`** and valid Neo4j credentials.
+2. Request the snapshot once (writes `latest.json` and a versioned file under `GALAXY_SNAPSHOT_DIR`):
+
+   ```bash
+   curl -sS -D - "http://127.0.0.1:8000/api/v1/galaxy/snapshot" -o /dev/null
+   ```
+
+Check response headers such as `X-Galaxy-Snapshot-Source` (`neo4j` vs `artifact` vs `fallback`).
+
+**Without HTTP** (same logic as the API, from repo root):
+
+```bash
+uv run python -c "from backend.app.services.galaxy_query_service import GalaxyQueryService; s=GalaxyQueryService(); s.get_snapshot(); print(s.last_snapshot_stats)"
+```
+
+### Run the frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The galaxy client calls **`/api/v1/galaxy/...`** on the **same origin** as the page. Local **`vite.config.ts`** proxies **`/api`** to **`http://127.0.0.1:8000`**, so keep the backend on port **8000** while using `npm run dev`. In production, serve the UI and API from the same host or adjust proxy / API base URL accordingly.
+
+Production build:
+
+```bash
+cd frontend
+npm run build
+```
