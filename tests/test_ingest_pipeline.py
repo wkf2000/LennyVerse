@@ -61,6 +61,54 @@ def test_parse_and_chunk_are_deterministic(tmp_path: Path) -> None:
     assert [c.id for c in chunks_a] == [c.id for c in chunks_b]
 
 
+def test_parse_document_accepts_type_and_date_aliases(tmp_path: Path) -> None:
+    doc_path = tmp_path / "post.md"
+    doc_path.write_text(
+        "\n".join(
+            [
+                "---",
+                "type: podcast",
+                "source_slug: alias-test",
+                "title: Alias Test",
+                "date: 2026-03-19",
+                "description: fixture",
+                "---",
+                "Body text.",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    parsed = parse_document(doc_path)
+    assert parsed.source_type == "podcast"
+    assert parsed.published_at == "2026-03-19"
+
+
+def test_parse_document_accepts_sourcetype_and_published_on_aliases(tmp_path: Path) -> None:
+    doc_path = tmp_path / "post.md"
+    doc_path.write_text(
+        "\n".join(
+            [
+                "---",
+                "sourcetype: podcast",
+                "source_slug: alias-test-2",
+                "title: Alias Test Two",
+                "published on: 2026-03-18T00:00:00+00:00",
+                "description: fixture",
+                "---",
+                "Body text.",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    parsed = parse_document(doc_path)
+    assert parsed.source_type == "podcast"
+    assert parsed.published_at == "2026-03-18T00:00:00+00:00"
+
+
 def test_build_chunks_overlap_increases_windows(tmp_path: Path) -> None:
     doc_path = tmp_path / "post.md"
     _write_fixture(doc_path, body_word_count=25)

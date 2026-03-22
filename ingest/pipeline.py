@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -168,8 +169,25 @@ def _parse_frontmatter(markdown: str) -> tuple[dict[str, str], str]:
         if ":" not in line:
             continue
         key, raw_value = line.split(":", 1)
-        metadata[key.strip()] = raw_value.strip().strip("'").strip('"')
+        normalized_key = _canonical_frontmatter_key(key)
+        # Keep first value when aliases map to same canonical key.
+        metadata.setdefault(normalized_key, raw_value.strip().strip("'").strip('"'))
     return metadata, body
+
+
+def _canonical_frontmatter_key(key: str) -> str:
+    compact = re.sub(r"[^a-z0-9]+", "", key.strip().lower())
+    aliases = {
+        "sourcetype": "source_type",
+        "type": "source_type",
+        "sourceslug": "source_slug",
+        "slug": "source_slug",
+        "publishedat": "published_at",
+        "publishedon": "published_at",
+        "date": "published_at",
+        "topic": "topics",
+    }
+    return aliases.get(compact, key.strip().lower())
 
 
 def parse_document(path: Path) -> ParsedDocument:
