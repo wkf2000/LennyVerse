@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -12,7 +13,7 @@ from typing import Any
 from langchain_text_splitters import MarkdownTextSplitter
 
 from ingest.embedder import embed_batch_size, embed_texts
-from ingest.extractor import extract_chunk_signals
+from ingest.extractor import extract_chunk_signals_batch, extract_concurrency
 from ingest.neo4j_projector import ProjectionPayload, project_to_neo4j
 from ingest.supabase_loader import load_documents_and_chunks
 
@@ -312,6 +313,11 @@ def run_pipeline(
         embed_bs = embed_batch_size()
         logger.info("Embedding: batch_size=%d (INGEST_EMBED_BATCH_SIZE)", embed_bs)
 
+    extract_conc = 1
+    if "extract" in stages:
+        extract_conc = extract_concurrency()
+        logger.info("Extraction: concurrency=%d (INGEST_EXTRACT_CONCURRENCY)", extract_conc)
+
     stage_stats = {stage: {"processed": 0, "skipped": 0} for stage in STAGES}
     all_chunks: list[ChunkRecord] = []
     processed_docs: list[ParsedDocument] = []
@@ -325,6 +331,7 @@ def run_pipeline(
     chunk_concept_rows_by_key: dict[tuple[str, str], dict[str, Any]] = {}
     chunk_framework_rows_by_key: dict[tuple[str, str], dict[str, Any]] = {}
     extraction_errors: list[ExtractionError] = []
+    pending_extractions: list[tuple[ParsedDocument, ChunkRecord]] = []
 
     total_docs = len(docs)
     for doc_index, doc in enumerate(docs, start=1):
@@ -421,84 +428,7 @@ def run_pipeline(
                 }
 
             for chunk in chunks:
-                chunk_extract = extract_chunk_signals(
-                    title=doc.title,
-                    source_slug=doc.source_slug,
-                    chunk_text=chunk.content,
-                )
-                if chunk_extract.error:
-                    extraction_errors.append(
-                        ExtractionError(
-                            source_slug=doc.source_slug,
-                            chunk_id=chunk.id,
-                            message=chunk_extract.error,
-                        )
-                    )
-                    continue
-
-                for concept in chunk_extract.concepts:
-                    concept_name = normalize_entity_name(str(concept.get("name", "")))
-                    if not concept_name:
-                        continue
-                    concept_id = stable_concept_id(concept_name.lower())
-                    description = normalize_entity_name(str(concept.get("description", "")))
-                    concept_rows_by_id.setdefault(
-                        concept_id,
-                        {
-                            "id": concept_id,
-                            "name": concept_name.lower(),
-                            "normalized_name": concept_name.lower(),
-                            "description": description,
-                        },
-                    )
-                    if description and len(description) > len(concept_rows_by_id[concept_id]["description"]):
-                        concept_rows_by_id[concept_id]["description"] = description
-
-                    confidence = float(concept.get("confidence", 0.0))
-                    evidence_span = normalize_entity_name(str(concept.get("evidence_span", "")))
-                    key = (chunk.id, concept_id)
-                    previous = chunk_concept_rows_by_key.get(key)
-                    candidate = {
-                        "chunk_id": chunk.id,
-                        "concept_id": concept_id,
-                        "confidence": confidence,
-                        "evidence_span": evidence_span,
-                    }
-                    if previous is None or candidate["confidence"] >= previous["confidence"]:
-                        chunk_concept_rows_by_key[key] = candidate
-
-                for framework in chunk_extract.frameworks:
-                    framework_name = normalize_entity_name(str(framework.get("name", "")))
-                    if not framework_name:
-                        continue
-                    framework_id = stable_framework_id(framework_name.lower())
-                    summary = normalize_entity_name(str(framework.get("summary", "")))
-                    confidence = float(framework.get("confidence", 0.0))
-                    framework_rows_by_id.setdefault(
-                        framework_id,
-                        {
-                            "id": framework_id,
-                            "name": framework_name.lower(),
-                            "summary": summary,
-                            "confidence": confidence,
-                        },
-                    )
-                    if summary and len(summary) > len(framework_rows_by_id[framework_id]["summary"]):
-                        framework_rows_by_id[framework_id]["summary"] = summary
-                    if confidence > framework_rows_by_id[framework_id]["confidence"]:
-                        framework_rows_by_id[framework_id]["confidence"] = confidence
-
-                    evidence_span = normalize_entity_name(str(framework.get("evidence_span", "")))
-                    key = (chunk.id, framework_id)
-                    previous = chunk_framework_rows_by_key.get(key)
-                    candidate = {
-                        "chunk_id": chunk.id,
-                        "framework_id": framework_id,
-                        "confidence": confidence,
-                        "evidence_span": evidence_span,
-                    }
-                    if previous is None or candidate["confidence"] >= previous["confidence"]:
-                        chunk_framework_rows_by_key[key] = candidate
+                pending_extractions.append((doc, chunk))
 
         for stage in ("embed", "extract", "load", "project"):
             if stage in stages:
@@ -509,6 +439,88 @@ def run_pipeline(
             "updated_at": doc.updated_at,
             "document_id": doc.id,
         }
+
+    if "extract" in stages and pending_extractions:
+        n_pending = len(pending_extractions)
+        logger.info("LLM extract: %d chunk(s), concurrency=%d", n_pending, extract_conc)
+        jobs = [(d.title, d.source_slug, c.content) for d, c in pending_extractions]
+        extraction_results = asyncio.run(
+            extract_chunk_signals_batch(jobs, concurrency=extract_conc),
+        )
+        for (doc, chunk), chunk_extract in zip(pending_extractions, extraction_results, strict=True):
+            if chunk_extract.error:
+                extraction_errors.append(
+                    ExtractionError(
+                        source_slug=doc.source_slug,
+                        chunk_id=chunk.id,
+                        message=chunk_extract.error,
+                    )
+                )
+                continue
+
+            for concept in chunk_extract.concepts:
+                concept_name = normalize_entity_name(str(concept.get("name", "")))
+                if not concept_name:
+                    continue
+                concept_id = stable_concept_id(concept_name.lower())
+                description = normalize_entity_name(str(concept.get("description", "")))
+                concept_rows_by_id.setdefault(
+                    concept_id,
+                    {
+                        "id": concept_id,
+                        "name": concept_name.lower(),
+                        "normalized_name": concept_name.lower(),
+                        "description": description,
+                    },
+                )
+                if description and len(description) > len(concept_rows_by_id[concept_id]["description"]):
+                    concept_rows_by_id[concept_id]["description"] = description
+
+                confidence = float(concept.get("confidence", 0.0))
+                evidence_span = normalize_entity_name(str(concept.get("evidence_span", "")))
+                key = (chunk.id, concept_id)
+                previous = chunk_concept_rows_by_key.get(key)
+                candidate = {
+                    "chunk_id": chunk.id,
+                    "concept_id": concept_id,
+                    "confidence": confidence,
+                    "evidence_span": evidence_span,
+                }
+                if previous is None or candidate["confidence"] >= previous["confidence"]:
+                    chunk_concept_rows_by_key[key] = candidate
+
+            for framework in chunk_extract.frameworks:
+                framework_name = normalize_entity_name(str(framework.get("name", "")))
+                if not framework_name:
+                    continue
+                framework_id = stable_framework_id(framework_name.lower())
+                summary = normalize_entity_name(str(framework.get("summary", "")))
+                confidence = float(framework.get("confidence", 0.0))
+                framework_rows_by_id.setdefault(
+                    framework_id,
+                    {
+                        "id": framework_id,
+                        "name": framework_name.lower(),
+                        "summary": summary,
+                        "confidence": confidence,
+                    },
+                )
+                if summary and len(summary) > len(framework_rows_by_id[framework_id]["summary"]):
+                    framework_rows_by_id[framework_id]["summary"] = summary
+                if confidence > framework_rows_by_id[framework_id]["confidence"]:
+                    framework_rows_by_id[framework_id]["confidence"] = confidence
+
+                evidence_span = normalize_entity_name(str(framework.get("evidence_span", "")))
+                key = (chunk.id, framework_id)
+                previous = chunk_framework_rows_by_key.get(key)
+                candidate = {
+                    "chunk_id": chunk.id,
+                    "framework_id": framework_id,
+                    "confidence": confidence,
+                    "evidence_span": evidence_span,
+                }
+                if previous is None or candidate["confidence"] >= previous["confidence"]:
+                    chunk_framework_rows_by_key[key] = candidate
 
     documents_payload = [
         {
@@ -628,6 +640,16 @@ def run_pipeline(
             "chunk_frameworks": extraction_payload["chunk_frameworks"],
         }
         try:
+            logger.info(
+                "Starting Neo4j projection: %d document(s), %d chunk(s), %d guest(s), %d tag(s), "
+                "%d concept(s), %d framework(s)",
+                len(documents_payload),
+                len(chunks_payload),
+                len(extraction_payload["guests"]),
+                len(extraction_payload["tags"]),
+                len(extraction_payload["concepts"]),
+                len(extraction_payload["frameworks"]),
+            )
             run_payload["projection_result"] = project_to_neo4j(projection_payload, clear_first=False)
             logger.info("Projection finished: %s", run_payload["projection_result"])
         except Exception as exc:

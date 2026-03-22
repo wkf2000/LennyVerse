@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from collections import defaultdict
+from urllib.parse import urlsplit, urlunsplit
 from itertools import combinations
 from typing import Any, Iterable, Mapping, TypedDict
 
 from dotenv import load_dotenv
 from neo4j import GraphDatabase
+
+logger = logging.getLogger(__name__)
 
 
 class ProjectionPayload(TypedDict):
@@ -47,6 +51,19 @@ def _projection_batch_size() -> int:
     if n < 1:
         raise ValueError("NEO4J_PROJECTION_BATCH_SIZE must be >= 1")
     return n
+
+
+def _neo4j_uri_for_logs(uri: str) -> str:
+    """Strip userinfo from URI so logs never include embedded credentials."""
+    parsed = urlsplit(uri)
+    if not (parsed.username or parsed.password):
+        return uri
+    host = parsed.hostname or ""
+    if parsed.port:
+        netloc = f"{host}:{parsed.port}"
+    else:
+        netloc = host
+    return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment))
 
 
 def _connect_driver():
@@ -213,6 +230,17 @@ def project_to_neo4j(payload: ProjectionPayload, *, clear_first: bool = False) -
     t0 = time.monotonic()
     stats: dict[str, int] = {}
 
+    load_dotenv()
+    log_uri = _neo4j_uri_for_logs(os.environ.get("NEO4J_URI", "bolt://127.0.0.1:7687"))
+    log_user = os.environ.get("NEO4J_USER", "neo4j")
+    logger.info(
+        "Neo4j: connecting uri=%s user=%s batch_size=%d (NEO4J_PROJECTION_BATCH_SIZE) clear_first=%s",
+        log_uri,
+        log_user,
+        batch_size,
+        clear_first,
+    )
+
     chunk_to_document = {str(c["id"]): str(c["document_id"]) for c in payload["chunks"]}
     mentions_edges = build_mentions_concept_edges(payload["chunk_concepts"], chunk_to_document)
     uses_framework_edges = build_uses_framework_edges(payload["chunk_frameworks"], chunk_to_document)
@@ -220,13 +248,42 @@ def project_to_neo4j(payload: ProjectionPayload, *, clear_first: bool = False) -
     guest_edges = build_features_guest_edges(payload["document_guests"])
     tag_edges = build_has_tag_edges(payload["document_tags"])
 
+    guest_rel_rows = _rel_rows_from_edges(guest_edges)
+    tag_rel_rows = _rel_rows_from_edges(tag_edges)
+    mentions_rel_rows = _rel_rows_from_edges(mentions_edges)
+    uses_fw_rel_rows = _rel_rows_from_edges(uses_framework_edges)
+    related_rel_rows = _rel_rows_from_edges(related_edges)
+
+    logger.info(
+        "Neo4j: payload nodes documents=%d chunks=%d guests=%d tags=%d concepts=%d frameworks=%d",
+        len(payload["documents"]),
+        len(payload["chunks"]),
+        len(payload["guests"]),
+        len(payload["tags"]),
+        len(payload["concepts"]),
+        len(payload["frameworks"]),
+    )
+    logger.info(
+        "Neo4j: payload edges PART_OF<=%d chunk(s) FEATURES_GUEST=%d HAS_TAG=%d "
+        "MENTIONS_CONCEPT=%d USES_FRAMEWORK=%d RELATED_TO=%d",
+        len(payload["chunks"]),
+        len(guest_rel_rows),
+        len(tag_rel_rows),
+        len(mentions_rel_rows),
+        len(uses_fw_rel_rows),
+        len(related_rel_rows),
+    )
+
     driver = _connect_driver()
     try:
         with driver.session() as session:
+            logger.info("Neo4j: ensuring %d id uniqueness constraint(s)", len(_CONSTRAINT_STATEMENTS))
             _ensure_constraints(session)
             if clear_first:
+                logger.info("Neo4j: clearing projection-scope labels %s", ", ".join(_GRAPH_LABELS))
                 _clear_projection_scope(session)
 
+            logger.info("Neo4j: upserting %d Document node(s)", len(payload["documents"]))
             stats["documents"] = _upsert_labeled_nodes_batched(
                 session,
                 label="Document",
@@ -234,6 +291,7 @@ def project_to_neo4j(payload: ProjectionPayload, *, clear_first: bool = False) -
                 batch_size=batch_size,
                 skip_keys=frozenset({"id", "raw_markdown"}),
             )
+            logger.info("Neo4j: upserting %d Chunk node(s)", len(payload["chunks"]))
             stats["chunks"] = _upsert_labeled_nodes_batched(
                 session,
                 label="Chunk",
@@ -241,6 +299,7 @@ def project_to_neo4j(payload: ProjectionPayload, *, clear_first: bool = False) -
                 batch_size=batch_size,
                 skip_keys=frozenset({"id"}),
             )
+            logger.info("Neo4j: upserting %d Guest node(s)", len(payload["guests"]))
             stats["guests"] = _upsert_labeled_nodes_batched(
                 session,
                 label="Guest",
@@ -248,6 +307,7 @@ def project_to_neo4j(payload: ProjectionPayload, *, clear_first: bool = False) -
                 batch_size=batch_size,
                 skip_keys=frozenset({"id"}),
             )
+            logger.info("Neo4j: upserting %d Tag node(s)", len(payload["tags"]))
             stats["tags"] = _upsert_labeled_nodes_batched(
                 session,
                 label="Tag",
@@ -255,6 +315,7 @@ def project_to_neo4j(payload: ProjectionPayload, *, clear_first: bool = False) -
                 batch_size=batch_size,
                 skip_keys=frozenset({"id"}),
             )
+            logger.info("Neo4j: upserting %d Concept node(s)", len(payload["concepts"]))
             stats["concepts"] = _upsert_labeled_nodes_batched(
                 session,
                 label="Concept",
@@ -262,6 +323,7 @@ def project_to_neo4j(payload: ProjectionPayload, *, clear_first: bool = False) -
                 batch_size=batch_size,
                 skip_keys=frozenset({"id"}),
             )
+            logger.info("Neo4j: upserting %d Framework node(s)", len(payload["frameworks"]))
             stats["frameworks"] = _upsert_labeled_nodes_batched(
                 session,
                 label="Framework",
@@ -270,53 +332,87 @@ def project_to_neo4j(payload: ProjectionPayload, *, clear_first: bool = False) -
                 skip_keys=frozenset({"id"}),
             )
 
+            logger.info("Neo4j: merging PART_OF from %d chunk row(s)", len(payload["chunks"]))
             stats["rels_part_of"] = _upsert_part_of_batched(
                 session, chunk_rows=payload["chunks"], batch_size=batch_size
             )
+            logger.info("Neo4j: merging %d FEATURES_GUEST edge(s)", len(guest_rel_rows))
             stats["rels_features_guest"] = _upsert_relationships_batched(
                 session,
                 rel_type="FEATURES_GUEST",
                 start_label="Document",
                 end_label="Guest",
-                rows=_rel_rows_from_edges(guest_edges),
+                rows=guest_rel_rows,
                 batch_size=batch_size,
             )
+            logger.info("Neo4j: merging %d HAS_TAG edge(s)", len(tag_rel_rows))
             stats["rels_has_tag"] = _upsert_relationships_batched(
                 session,
                 rel_type="HAS_TAG",
                 start_label="Document",
                 end_label="Tag",
-                rows=_rel_rows_from_edges(tag_edges),
+                rows=tag_rel_rows,
                 batch_size=batch_size,
             )
+            logger.info("Neo4j: merging %d MENTIONS_CONCEPT edge(s)", len(mentions_rel_rows))
             stats["rels_mentions_concept"] = _upsert_relationships_batched(
                 session,
                 rel_type="MENTIONS_CONCEPT",
                 start_label="Document",
                 end_label="Concept",
-                rows=_rel_rows_from_edges(mentions_edges),
+                rows=mentions_rel_rows,
                 batch_size=batch_size,
             )
+            logger.info("Neo4j: merging %d USES_FRAMEWORK edge(s)", len(uses_fw_rel_rows))
             stats["rels_uses_framework"] = _upsert_relationships_batched(
                 session,
                 rel_type="USES_FRAMEWORK",
                 start_label="Document",
                 end_label="Framework",
-                rows=_rel_rows_from_edges(uses_framework_edges),
+                rows=uses_fw_rel_rows,
                 batch_size=batch_size,
             )
+            logger.info("Neo4j: merging %d RELATED_TO edge(s)", len(related_rel_rows))
             stats["rels_related_to"] = _upsert_relationships_batched(
                 session,
                 rel_type="RELATED_TO",
                 start_label="Concept",
                 end_label="Concept",
-                rows=_rel_rows_from_edges(related_edges),
+                rows=related_rel_rows,
                 batch_size=batch_size,
             )
     finally:
         driver.close()
 
     stats["elapsed_ms"] = int((time.monotonic() - t0) * 1000)
+    logger.info(
+        "Neo4j: session complete in %dms — nodes written=%s rels written=%s",
+        stats["elapsed_ms"],
+        {
+            k: stats[k]
+            for k in (
+                "documents",
+                "chunks",
+                "guests",
+                "tags",
+                "concepts",
+                "frameworks",
+            )
+            if k in stats
+        },
+        {
+            k: stats[k]
+            for k in (
+                "rels_part_of",
+                "rels_features_guest",
+                "rels_has_tag",
+                "rels_mentions_concept",
+                "rels_uses_framework",
+                "rels_related_to",
+            )
+            if k in stats
+        },
+    )
     return stats
 
 

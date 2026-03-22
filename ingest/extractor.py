@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from dataclasses import dataclass
@@ -79,6 +80,16 @@ def _extract_max_chars() -> int:
     return max(500, value)
 
 
+def extract_concurrency() -> int:
+    """Max concurrent LLM extraction calls (INGEST_EXTRACT_CONCURRENCY, default 4)."""
+    raw = os.getenv("INGEST_EXTRACT_CONCURRENCY", "4")
+    try:
+        value = int(raw.strip())
+    except ValueError as e:
+        raise RuntimeError(f"Invalid INGEST_EXTRACT_CONCURRENCY: {raw!r}") from e
+    return max(1, value)
+
+
 def _build_runtime() -> ChatOllama:
     base_url = os.getenv("OLLAMA_LLM_BASE_URL") or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     model = _extract_model_name()
@@ -130,6 +141,93 @@ def _clamp_confidence(value: float) -> float:
     return max(0.0, min(1.0, value))
 
 
+def _result_from_parsed(parsed: _ChunkExtraction) -> ChunkExtractionResult:
+    concepts = [
+        {
+            "name": item.name.strip(),
+            "confidence": _clamp_confidence(item.confidence),
+            "evidence_span": item.evidence_span.strip(),
+            "description": item.description.strip(),
+        }
+        for item in parsed.concepts
+        if item.name.strip()
+    ]
+    frameworks = [
+        {
+            "name": item.name.strip(),
+            "confidence": _clamp_confidence(item.confidence),
+            "evidence_span": item.evidence_span.strip(),
+            "summary": item.summary.strip(),
+        }
+        for item in parsed.frameworks
+        if item.name.strip()
+    ]
+    return ChunkExtractionResult(concepts=concepts, frameworks=frameworks)
+
+
+def _coerce_structured_result(result: dict[str, Any]) -> ChunkExtractionResult:
+    parsed = result.get("parsed")
+    parsing_error = result.get("parsing_error")
+    if parsing_error is not None:
+        raise RuntimeError(f"structured parsing error: {parsing_error}")
+    if parsed is None:
+        raise RuntimeError("structured parsing returned empty payload")
+    return _result_from_parsed(parsed)
+
+
+async def extract_chunk_signals_async(*, title: str, source_slug: str, chunk_text: str) -> ChunkExtractionResult:
+    if not chunk_text.strip():
+        return ChunkExtractionResult(concepts=[], frameworks=[])
+
+    runtime = _model_runtime()
+    structured = runtime.with_structured_output(_ChunkExtraction, include_raw=True)
+    prompt = _prompt_for_chunk(
+        title=title,
+        source_slug=source_slug,
+        chunk_text=_clip_text(chunk_text, _extract_max_chars()),
+    )
+    attempts = _extract_retries() + 1
+
+    for attempt in range(1, attempts + 1):
+        try:
+            result = await structured.ainvoke(prompt)
+            if not isinstance(result, dict):
+                raise RuntimeError(f"unexpected structured output type: {type(result)!r}")
+            return _coerce_structured_result(result)
+        except Exception as e:  # noqa: BLE001
+            if attempt >= attempts:
+                return ChunkExtractionResult(
+                    concepts=[],
+                    frameworks=[],
+                    error=f"{type(e).__name__}: {e}",
+                )
+            logger.warning("extract retry %d/%d failed: %s", attempt, attempts, e)
+
+    return ChunkExtractionResult(concepts=[], frameworks=[], error="unexpected extraction failure")
+
+
+async def extract_chunk_signals_batch(
+    jobs: list[tuple[str, str, str]],
+    *,
+    concurrency: int,
+) -> list[ChunkExtractionResult]:
+    """Run chunk extractions concurrently; order of results matches ``jobs``."""
+    if not jobs:
+        return []
+
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def one(title: str, source_slug: str, chunk_text: str) -> ChunkExtractionResult:
+        async with semaphore:
+            return await extract_chunk_signals_async(
+                title=title,
+                source_slug=source_slug,
+                chunk_text=chunk_text,
+            )
+
+    return await asyncio.gather(*[one(t, s, c) for t, s, c in jobs])
+
+
 def extract_chunk_signals(*, title: str, source_slug: str, chunk_text: str) -> ChunkExtractionResult:
     if not chunk_text.strip():
         return ChunkExtractionResult(concepts=[], frameworks=[])
@@ -146,34 +244,7 @@ def extract_chunk_signals(*, title: str, source_slug: str, chunk_text: str) -> C
     for attempt in range(1, attempts + 1):
         try:
             result = structured.invoke(prompt)
-            parsed = result.get("parsed")
-            parsing_error = result.get("parsing_error")
-            if parsing_error is not None:
-                raise RuntimeError(f"structured parsing error: {parsing_error}")
-            if parsed is None:
-                raise RuntimeError("structured parsing returned empty payload")
-
-            concepts = [
-                {
-                    "name": item.name.strip(),
-                    "confidence": _clamp_confidence(item.confidence),
-                    "evidence_span": item.evidence_span.strip(),
-                    "description": item.description.strip(),
-                }
-                for item in parsed.concepts
-                if item.name.strip()
-            ]
-            frameworks = [
-                {
-                    "name": item.name.strip(),
-                    "confidence": _clamp_confidence(item.confidence),
-                    "evidence_span": item.evidence_span.strip(),
-                    "summary": item.summary.strip(),
-                }
-                for item in parsed.frameworks
-                if item.name.strip()
-            ]
-            return ChunkExtractionResult(concepts=concepts, frameworks=frameworks)
+            return _coerce_structured_result(result)
         except Exception as e:  # noqa: BLE001
             if attempt >= attempts:
                 return ChunkExtractionResult(

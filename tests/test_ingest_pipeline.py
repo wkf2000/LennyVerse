@@ -19,6 +19,13 @@ from ingest.pipeline import (
 )
 
 
+def _patch_extract_batch(result: ChunkExtractionResult):
+    async def fake_batch(_jobs: list[tuple[str, str, str]], *, concurrency: int) -> list[ChunkExtractionResult]:
+        return [result for _ in _jobs]
+
+    return patch("ingest.pipeline.extract_chunk_signals_batch", side_effect=fake_batch)
+
+
 def _write_fixture(path: Path, body_word_count: int = 35) -> None:
     words = " ".join(f"w{i}" for i in range(body_word_count))
     path.write_text(
@@ -221,7 +228,7 @@ def test_extract_stage_writes_entity_artifacts(tmp_path: Path) -> None:
     )
 
     with (
-        patch("ingest.pipeline.extract_chunk_signals", return_value=fake_extract),
+        _patch_extract_batch(fake_extract),
         patch("ingest.pipeline.load_documents_and_chunks", fake_load),
     ):
         run = run_pipeline(
@@ -259,9 +266,8 @@ def test_invalid_extraction_is_recorded_not_fatal(tmp_path: Path) -> None:
     input_dir.mkdir()
     _write_fixture(input_dir / "post.md", body_word_count=30)
 
-    with patch(
-        "ingest.pipeline.extract_chunk_signals",
-        return_value=ChunkExtractionResult(concepts=[], frameworks=[], error="mock parse failure"),
+    with _patch_extract_batch(
+        ChunkExtractionResult(concepts=[], frameworks=[], error="mock parse failure"),
     ):
         run = run_pipeline(
             input_dir=input_dir,
@@ -288,7 +294,7 @@ def test_extract_load_rerun_is_idempotent(tmp_path: Path) -> None:
     fake_load = MagicMock(return_value={"ok": 1})
 
     with (
-        patch("ingest.pipeline.extract_chunk_signals", return_value=fake_extract),
+        _patch_extract_batch(fake_extract),
         patch("ingest.pipeline.load_documents_and_chunks", fake_load),
     ):
         first = run_pipeline(
