@@ -14,6 +14,7 @@ The ingest pipeline reads markdown from disk, chunks and embeds content, writes 
   - (optional fallback) `OLLAMA_BASE_URL` — used if specific embed/LLM URL vars are unset
   - `SUPABASE_URL` and `SUPABASE_SECRET_KEY` (or `SUPABASE_KEY`) — load stage
   - `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` — `project` stage and `rebuild-graph` (local Neo4j; see `.env.example`)
+  - (optional) `INGEST_INPUT_DIR` — default markdown root for `run` / `backfill` when `--input` is omitted (otherwise `data/inputs`)
 
 ### Run
 
@@ -29,7 +30,7 @@ Progress logs go to **stderr**; the final run summary is printed as JSON on **st
 
 | Flag | Purpose |
 |------|---------|
-| `--input DIR` | Markdown root (default: `data/inputs`) |
+| `--input DIR` | Markdown root (default: `INGEST_INPUT_DIR` from `.env`, else `data/inputs`) |
 | `--output DIR` | Artifacts + checkpoint (default: `data/ingest-output`) |
 | `--force` | Reprocess even when document checksum is unchanged (needed after changing chunk settings or to reload Supabase) |
 | `--since ISO` | Only documents with `published_at` ≥ this time |

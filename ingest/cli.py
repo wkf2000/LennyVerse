@@ -3,9 +3,12 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any
+
+from dotenv import load_dotenv
 
 from ingest.neo4j_projector import project_to_neo4j
 from ingest.pipeline import STAGES, run_pipeline
@@ -37,12 +40,22 @@ def _run_pipeline_for_cli(*, failure_log_label: str, **kwargs: Any) -> tuple[int
         return 1, None
 
 
+def _default_input_dir() -> str:
+    load_dotenv()
+    return (os.getenv("INGEST_INPUT_DIR") or "data/inputs").strip() or "data/inputs"
+
+
 def build_parser() -> argparse.ArgumentParser:
+    default_input = _default_input_dir()
     parser = argparse.ArgumentParser(prog="ingest", description="LennyVerse local ingestion CLI.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     run_parser = subparsers.add_parser("run", help="Run local ingestion over input markdown files.")
-    run_parser.add_argument("--input", default="data/inputs", help="Input directory of markdown files.")
+    run_parser.add_argument(
+        "--input",
+        default=default_input,
+        help="Input directory of markdown files (default: INGEST_INPUT_DIR or data/inputs).",
+    )
     run_parser.add_argument(
         "--output",
         default="data/ingest-output",
@@ -65,7 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
         "backfill", help="Backfill all local documents of a source type."
     )
     backfill_parser.add_argument("--source", choices=["newsletter", "podcast"], required=True)
-    backfill_parser.add_argument("--input", default="data/inputs")
+    backfill_parser.add_argument("--input", default=default_input)
     backfill_parser.add_argument("--output", default="data/ingest-output")
     backfill_parser.add_argument("--stages", default="parse,chunk,embed,extract,load,project")
     backfill_parser.add_argument(
