@@ -1,0 +1,74 @@
+:root {
+  --lv-navy: #1b365d;
+  --lv-orange: #d77601;
+  --lv-steel: #6a8eae;
+  --lv-cream: #ebe4d3;
+  --lv-white: #ffffff;
+  --lv-charcoal: #1a1a2e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Noto Sans", system-ui, -apple-system, Segoe UI, sans-serif;
+  color: var(--lv-charcoal);
+  background: var(--lv-cream);
+}
+
+.galaxy-page {
+  min-height: 100vh;
+  padding: 16px;
+}
+
+.galaxy-header {
+  margin-bottom: 12px;
+}
+
+.galaxy-title {
+  margin: 0;
+  color: var(--lv-navy);
+  font-family: "Noto Serif", Georgia, serif;
+}
+
+.galaxy-canvas-shell {
+  height: 72vh;
+  border: 1px solid var(--lv-steel);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--lv-white);
+}
+
+.galaxy-status {
+  padding: 16px;
+  border-radius: 8px;
+  background: var(--lv-white);
+  margin-bottom: 12px;
+}
+
+.galaxy-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr 320px;
+  gap: 12px;
+  align-items: start;
+}
+
+.galaxy-filter-group {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.galaxy-filter-group select {
+  min-height: 84px;
+  border: 1px solid var(--lv-steel);
+  border-radius: 6px;
+}
+
+@media (max-width: 1200px) {
+  .galaxy-layout {
+    grid-template-columns: 1fr;
+  }
+}
