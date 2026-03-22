@@ -215,3 +215,5 @@ data/
 # docs/
 .DS_Store
 brandkit/
+frontend/node_modules/
+frontend/dist/
