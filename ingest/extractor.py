@@ -215,15 +215,23 @@ async def extract_chunk_signals_batch(
     if not jobs:
         return []
 
+    total = len(jobs)
     semaphore = asyncio.Semaphore(concurrency)
+    progress_lock = asyncio.Lock()
+    completed = 0
 
     async def one(title: str, source_slug: str, chunk_text: str) -> ChunkExtractionResult:
+        nonlocal completed
         async with semaphore:
-            return await extract_chunk_signals_async(
+            result = await extract_chunk_signals_async(
                 title=title,
                 source_slug=source_slug,
                 chunk_text=chunk_text,
             )
+        async with progress_lock:
+            completed += 1
+            logger.info("Extractor: progress %d/%d", completed, total)
+        return result
 
     return await asyncio.gather(*[one(t, s, c) for t, s, c in jobs])
 
