@@ -20,6 +20,9 @@ from ingest.supabase_loader import load_documents_and_chunks
 
 STAGES = ("parse", "chunk", "embed", "extract", "load", "project")
 
+# Basenames to skip when scanning for ingest markdown (repo docs, not content).
+_SKIP_INGEST_MARKDOWN_NAMES = frozenset({"readme.md", "license.md"})
+
 logger = logging.getLogger(__name__)
 
 
@@ -300,7 +303,11 @@ def run_pipeline(
         state = json.loads(checkpoint_path.read_text(encoding="utf-8"))
 
     since_dt = _parse_since(since)
-    paths = sorted(input_dir.rglob("*.md"))
+    paths = sorted(
+        p
+        for p in input_dir.rglob("*.md")
+        if p.name.lower() not in _SKIP_INGEST_MARKDOWN_NAMES
+    )
     logger.info("Scanning %s — found %d markdown file(s)", input_dir, len(paths))
     docs = [parse_document(path) for path in paths]
 

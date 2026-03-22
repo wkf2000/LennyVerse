@@ -119,6 +119,37 @@ def test_build_chunks_overlap_increases_windows(tmp_path: Path) -> None:
     assert len(with_overlap) >= len(no_overlap)
 
 
+def test_run_pipeline_skips_readme_and_license_markdown(tmp_path: Path) -> None:
+    input_dir = tmp_path / "inputs"
+    output_dir = tmp_path / "out"
+    input_dir.mkdir()
+    _write_fixture(input_dir / "post.md", body_word_count=20)
+    (input_dir / "README.md").write_text("# readme\n", encoding="utf-8")
+    (input_dir / "LICENSE.md").write_text("# license\n", encoding="utf-8")
+    nested = input_dir / "newsletters"
+    nested.mkdir()
+    (nested / "Readme.md").write_text("# nested\n", encoding="utf-8")
+    (nested / "issue.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "source_type: newsletter",
+                "source_slug: issue-two",
+                "title: Issue Two",
+                "published_at: 2026-03-21T00:00:00+00:00",
+                "description: fixture",
+                "---",
+                " ".join(f"w{i}" for i in range(20)),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = run_pipeline(input_dir=input_dir, output_dir=output_dir, stages=("parse", "chunk"))
+    assert result["counts"]["processed_documents"] == 2
+
+
 def test_rerun_skips_unchanged_documents(tmp_path: Path) -> None:
     input_dir = tmp_path / "inputs"
     output_dir = tmp_path / "out"
