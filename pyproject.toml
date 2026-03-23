@@ -1,0 +1,25 @@
+[project]
+name = "lennyverse"
+version = "0.1.0"
+description = "LennyVerse backend and data pipeline."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.116.0",
+  "openai>=1.108.0",
+  "psycopg[binary]>=3.2.0",
+  "pydantic-settings>=2.10.0",
+  "python-frontmatter>=1.1.0",
+  "python-slugify>=8.0.4",
+  "tenacity>=9.1.2",
+  "uvicorn>=0.35.0",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.4.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["backend/src", "data-pipeline/src"]
+testpaths = ["tests"]

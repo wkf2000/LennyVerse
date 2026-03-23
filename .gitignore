@@ -211,8 +211,8 @@ __marimo__/
 .codex/
 .worktrees/
 
-data/
 docs/
 .DS_Store
 frontend/node_modules/
 frontend/dist/
+data/lennys-newsletterpodcastdata

@@ -14,8 +14,6 @@ frontend/dist
 *.md
 !README.md
 docs
-lennys-newsletterpodcastdata
-data
 tests
 backend/tests
 .pytest_cache

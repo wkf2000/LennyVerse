@@ -1,15 +1,12 @@
 services:
-  web:
-    build: .
+  api:
+    build:
+      context: .
     ports:
       - "${APP_PORT:-8000}:8000"
-    environment:
-      STATIC_ROOT: /app/static
-      GALAXY_SNAPSHOT_DIR: /app/data/galaxy-snapshots
     env_file:
-      - path: .env
+      - .env
     volumes:
-      - galaxy_snapshots:/app/data/galaxy-snapshots
-
-volumes:
-  galaxy_snapshots:
+      - ./backend:/app/backend
+      - ./data-pipeline:/app/data-pipeline
+      - ./data:/app/data
