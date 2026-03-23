@@ -28,6 +28,8 @@ AI-powered product wisdom platform built as a monorepo.
 
 - API server: `make run-api`
 - Dry-run ingest (no writes): `make ingest-dry-run`
+- Limited ingest dry-run (first N docs): `make ingest-dry-run-limit LIMIT=10`
+- Limited ingest (first N docs): `make ingest-limit LIMIT=10`
 - Tests: `make test`
 
 ## Operational Runbook (Phase 1)

@@ -20,7 +20,7 @@ class Database:
         self._db_url = db_url
 
     def _connect(self) -> psycopg.Connection:
-        return psycopg.connect(self._db_url)
+        return psycopg.connect(self._db_url, prepare_threshold=None)
 
     def execute_sql_file(self, path: Path) -> None:
         sql = path.read_text(encoding="utf-8")

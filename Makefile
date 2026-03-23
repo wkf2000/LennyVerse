@@ -14,8 +14,14 @@ normalize-data:
 ingest:
 	PYTHONPATH=$(PYTHONPATH) uv run python -m data_pipeline.scripts.ingest
 
+ingest-limit:
+	PYTHONPATH=$(PYTHONPATH) uv run python -m data_pipeline.scripts.ingest --limit $(LIMIT)
+
 ingest-dry-run:
 	PYTHONPATH=$(PYTHONPATH) uv run python -m data_pipeline.scripts.ingest --dry-run
+
+ingest-dry-run-limit:
+	PYTHONPATH=$(PYTHONPATH) uv run python -m data_pipeline.scripts.ingest --dry-run --limit $(LIMIT)
 
 migrate:
 	PYTHONPATH=$(PYTHONPATH) uv run python -m data_pipeline.scripts.apply_migrations

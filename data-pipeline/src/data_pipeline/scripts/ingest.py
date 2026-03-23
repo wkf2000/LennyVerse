@@ -21,10 +21,20 @@ def _batched(items: list[ChunkRecord], size: int):
 def main() -> None:
     parser = argparse.ArgumentParser(description="Ingest corpus content and graph metadata.")
     parser.add_argument("--dry-run", action="store_true", help="Parse and chunk only; no DB writes.")
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Optional number of source documents to ingest for quick testing.",
+    )
     args = parser.parse_args()
 
     settings = Settings()
     documents = parse_corpus(settings)
+    if args.limit is not None:
+        if args.limit <= 0:
+            raise ValueError("--limit must be greater than 0.")
+        documents = documents[: args.limit]
     chunks = chunk_documents(
         documents,
         chunk_size=settings.ingest_chunk_size_chars,
