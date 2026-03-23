@@ -1,2 +1,0 @@
-"""LennyVerse manual ingestion package."""
-

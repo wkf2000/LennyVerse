@@ -212,8 +212,7 @@ __marimo__/
 .worktrees/
 
 data/
-# docs/
+docs/
 .DS_Store
-brandkit/
 frontend/node_modules/
 frontend/dist/
