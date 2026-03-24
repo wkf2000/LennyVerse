@@ -8,6 +8,8 @@ This spec defines the next implementation slice after completing:
 
 Goal: deliver a balanced, UX-first RAG experience that combines semantic search and grounded chat in one unified workspace.
 
+LLM integration requirement for this slice: use an OpenAI API-compatible interface so the backend can target OpenAI or compatible providers without changing application contracts.
+
 ## Scope
 
 ### In Scope
