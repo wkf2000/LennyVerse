@@ -15,10 +15,10 @@ interface GraphCanvasProps {
 }
 
 const NODE_COLORS: Record<GraphNode["type"], string> = {
-  guest: "#4ecdc4",
-  topic: "#ff6b6b",
-  content: "#ffe66d",
-  concept: "#c084fc",
+  guest: "#f59e0b",
+  topic: "#fb7185",
+  content: "#fcd34d",
+  concept: "#c4b5fd",
 };
 
 export default function GraphCanvas({
@@ -115,7 +115,7 @@ export default function GraphCanvas({
       .selectAll("line")
       .data(forceLinks)
       .join("line")
-      .attr("stroke", "#8892a0")
+      .attr("stroke", "#b59f7a")
       .attr("stroke-opacity", 0.35)
       .attr("stroke-width", (d) => Math.max(1, Math.min(d.weight, 4)));
 

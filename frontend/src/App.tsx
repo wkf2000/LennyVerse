@@ -11,6 +11,9 @@ const INITIAL_GRAPH: GraphResponse = {
 
 const NODE_TYPE_ORDER: NodeType[] = ["guest", "topic", "content", "concept"];
 const MAX_RELATED_CONTENT_ITEMS = 5;
+const VIEWS = ["graph", "search", "generate", "about"] as const;
+
+type View = (typeof VIEWS)[number];
 
 function formatDateInputValue(value: Date): string {
   const year = value.getFullYear();
@@ -42,6 +45,8 @@ export default function App(): JSX.Element {
   const [startDate, setStartDate] = useState(initialDateRange.startDate);
   const [endDate, setEndDate] = useState(initialDateRange.endDate);
   const [nodeTypes, setNodeTypes] = useState<NodeType[]>(["guest", "topic", "content"]);
+  const [activeView, setActiveView] = useState<View>("graph");
+  const [showHeroCopy, setShowHeroCopy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -108,6 +113,15 @@ export default function App(): JSX.Element {
     };
   }, [selectedNodeId]);
 
+  useEffect(() => {
+    if (graphLoading) {
+      setShowHeroCopy(false);
+      return;
+    }
+    const timeout = window.setTimeout(() => setShowHeroCopy(true), 900);
+    return () => window.clearTimeout(timeout);
+  }, [graphLoading]);
+
   const graphStats = useMemo(
     () => ({
       nodes: graphData.nodes.length,
@@ -128,164 +142,248 @@ export default function App(): JSX.Element {
     });
   }
 
-  return (
-    <main className="min-h-screen bg-slate-950 px-6 py-6 text-slate-100">
-      <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Lenny&apos;s Teaching Assistant</h1>
-          <p className="mt-1 text-sm text-slate-400">
-            638 episodes and posts. One knowledge graph. Your next syllabus.
-          </p>
-        </div>
-        <div className="flex gap-6 text-sm text-slate-300">
-          <span>{graphStats.nodes} nodes</span>
-          <span>{graphStats.edges} edges</span>
-        </div>
-      </header>
-
-      <section className="mb-4 grid gap-3 rounded-xl border border-slate-800 bg-slate-900/70 p-4 md:grid-cols-6">
-        <label className="md:col-span-2">
-          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">
-            Search nodes
-          </span>
-          <input
-            className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-cyan-400"
-            placeholder="Type a guest, topic, or title..."
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-          />
-        </label>
-
-        <label>
-          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">
-            Topic filter
-          </span>
-          <input
-            className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-cyan-400"
-            placeholder="growth"
-            value={topicFilter}
-            onChange={(event) => setTopicFilter(event.target.value)}
-          />
-        </label>
-
-        <label>
-          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">
-            Start date
-          </span>
-          <input
-            type="date"
-            className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-cyan-400"
-            value={startDate}
-            onChange={(event) => setStartDate(event.target.value)}
-          />
-        </label>
-
-        <label>
-          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">
-            End date
-          </span>
-          <input
-            type="date"
-            className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-cyan-400"
-            value={endDate}
-            onChange={(event) => setEndDate(event.target.value)}
-          />
-        </label>
-
-        <div>
-          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">
-            Node types
-          </span>
-          <div className="flex flex-wrap gap-2 pt-1">
-            {NODE_TYPE_ORDER.map((type) => (
-              <button
-                key={type}
-                type="button"
-                className={`rounded-full border px-2.5 py-1 text-xs font-medium capitalize transition ${
-                  nodeTypes.includes(type)
-                    ? "border-cyan-400 bg-cyan-500/20 text-cyan-100"
-                    : "border-slate-700 text-slate-300 hover:border-slate-500"
-                }`}
-                onClick={() => toggleNodeType(type)}
-              >
-                {type}
-              </button>
+  function renderPlaceholder(view: Exclude<View, "graph">): JSX.Element {
+    const contentByView: Record<Exclude<View, "graph">, { title: string; body: string; tips: string[] }> = {
+      search: {
+        title: "Search View Placeholder",
+        body: "Perplexity-style semantic search panel is reserved here. You will query the corpus and inspect grounded citations side-by-side with detailed source context.",
+        tips: [
+          "Unified query input with example prompts",
+          "Streaming AI answer with citation rows",
+          "Open any result and jump back to graph context",
+        ],
+      },
+      generate: {
+        title: "Create View Placeholder",
+        body: "Agentic material generation lands here. This page will stream planning and tool-use steps while building structured outputs like syllabi and quizzes.",
+        tips: [
+          "Prompt composer and reusable templates",
+          "Live agent step log with tool traces",
+          "Progressive syllabus/quiz output with citations",
+        ],
+      },
+      about: {
+        title: "About Placeholder",
+        body: "Mission and implementation overview goes here. This section will explain how the app supports educators and aligns with Gonzaga's leadership and service principles.",
+        tips: [
+          "Project purpose and audience",
+          "Ethical AI framing and transparency",
+          "Architecture snapshot for interview demos",
+        ],
+      },
+    };
+    const page = contentByView[view];
+    return (
+      <section className="mx-auto max-w-6xl px-4 pb-8 pt-28 sm:px-6 lg:px-8">
+        <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+          <h2 className="text-3xl font-semibold tracking-tight text-slate-900">{page.title}</h2>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">{page.body}</p>
+          <div className="mt-6 grid gap-3 md:grid-cols-3">
+            {page.tips.map((tip) => (
+              <div key={tip} className="rounded-2xl border border-amber-200/70 bg-amber-50 p-4 text-sm text-slate-700">
+                {tip}
+              </div>
             ))}
           </div>
         </div>
       </section>
+    );
+  }
 
-      {graphError ? (
-        <div className="mb-4 rounded-md border border-rose-500/60 bg-rose-950/40 p-3 text-sm text-rose-200">
-          {graphError}
+  return (
+    <main className="min-h-screen bg-[#fffaf3] text-slate-900">
+      <nav className="fixed right-4 top-4 z-50">
+        <div className="flex items-center gap-1 rounded-full border border-amber-200/80 bg-white/90 p-1 shadow-sm backdrop-blur">
+          {VIEWS.map((view) => {
+            const isActive = activeView === view;
+            return (
+              <button
+                key={view}
+                type="button"
+                className={`cursor-pointer rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-wide transition-colors duration-200 motion-reduce:transition-none ${
+                  isActive ? "bg-slate-900 text-amber-100" : "text-slate-600 hover:bg-amber-50 hover:text-slate-900"
+                }`}
+                onClick={() => setActiveView(view)}
+              >
+                {view}
+              </button>
+            );
+          })}
         </div>
-      ) : null}
+      </nav>
 
-      <section className="grid h-[76vh] grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
-        <div className="relative">
-          {graphLoading ? (
-            <div className="absolute inset-0 z-10 grid place-items-center rounded-xl border border-slate-700 bg-slate-950/85 text-slate-300">
-              Loading graph...
-            </div>
-          ) : null}
-          <GraphCanvas
-            nodes={graphData.nodes}
-            edges={graphData.edges}
-            selectedNodeId={selectedNodeId}
-            searchTerm={searchTerm}
-            onNodeSelect={setSelectedNodeId}
-          />
-        </div>
-
-        <aside className="h-full rounded-xl border border-slate-800 bg-slate-900/70 p-4">
-          {!selectedNodeId ? (
-            <div className="grid h-full place-items-center text-center text-sm text-slate-400">
-              Click a node to inspect details and related content.
-            </div>
-          ) : detailLoading ? (
-            <div className="text-sm text-slate-300">Loading node details...</div>
-          ) : !selectedNodeDetail ? (
-            <div className="text-sm text-slate-300">No detail available for this node.</div>
-          ) : (
-            <div className="h-full overflow-y-auto">
-              <h2 className="text-xl font-semibold">{selectedNodeDetail.node.label}</h2>
-              <p className="mt-1 text-xs uppercase tracking-wide text-slate-400">
-                {selectedNodeDetail.node.type}
+      {activeView === "graph" ? (
+        <section className="mx-auto max-w-7xl px-4 pb-8 pt-24 sm:px-6 lg:px-8">
+          <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">LennyVerse</p>
+              <h1 className="mt-2 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
+                One knowledge graph for modern teaching.
+              </h1>
+              <p className="mt-3 max-w-3xl text-sm text-slate-600">
+                Explore 638 podcasts and newsletters with a graph-first view built for clarity, discovery, and course design.
               </p>
-              <p className="mt-3 text-sm text-slate-300">
-                Connected nodes: {selectedNodeDetail.connected_node_count}
-              </p>
+            </div>
+            <div className="flex gap-5 rounded-full border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-slate-700">
+              <span>{graphStats.nodes} nodes</span>
+              <span>{graphStats.edges} edges</span>
+            </div>
+          </header>
 
-              <div className="mt-5">
-                <h3 className="text-sm font-semibold text-slate-200">Related content</h3>
-                {selectedNodeDetail.related_content.length > MAX_RELATED_CONTENT_ITEMS ? (
-                  <p className="mt-1 text-xs text-slate-400">
-                    Showing top {MAX_RELATED_CONTENT_ITEMS} of {selectedNodeDetail.related_content.length}
-                  </p>
-                ) : null}
-                <ul className="mt-2 space-y-2">
-                  {selectedNodeDetail.related_content.length === 0 ? (
-                    <li className="rounded-md border border-slate-800 bg-slate-950/60 p-2 text-sm text-slate-400">
-                      No related content rows available.
-                    </li>
-                  ) : (
-                    selectedNodeDetail.related_content.slice(0, MAX_RELATED_CONTENT_ITEMS).map((item) => (
-                      <li key={item.id} className="rounded-md border border-slate-800 bg-slate-950/60 p-2">
-                        <p className="text-sm font-medium text-slate-100">{item.title}</p>
-                        <p className="mt-1 text-xs text-slate-400">
-                          {item.content_type}
-                          {item.published_at ? ` · ${item.published_at}` : ""}
-                        </p>
-                        {item.guest ? <p className="mt-1 text-xs text-slate-400">Guest: {item.guest}</p> : null}
-                      </li>
-                    ))
-                  )}
-                </ul>
+          <section className="mb-4 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 md:grid-cols-6">
+            <label className="md:col-span-2">
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Search nodes
+              </span>
+              <input
+                className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition-colors duration-200 focus:border-amber-400 focus:bg-white motion-reduce:transition-none"
+                placeholder="Type a guest, topic, or title..."
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+              />
+            </label>
+
+            <label>
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Topic filter
+              </span>
+              <input
+                className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition-colors duration-200 focus:border-amber-400 focus:bg-white motion-reduce:transition-none"
+                placeholder="growth"
+                value={topicFilter}
+                onChange={(event) => setTopicFilter(event.target.value)}
+              />
+            </label>
+
+            <label>
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Start date
+              </span>
+              <input
+                type="date"
+                className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition-colors duration-200 focus:border-amber-400 focus:bg-white motion-reduce:transition-none"
+                value={startDate}
+                onChange={(event) => setStartDate(event.target.value)}
+              />
+            </label>
+
+            <label>
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                End date
+              </span>
+              <input
+                type="date"
+                className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition-colors duration-200 focus:border-amber-400 focus:bg-white motion-reduce:transition-none"
+                value={endDate}
+                onChange={(event) => setEndDate(event.target.value)}
+              />
+            </label>
+
+            <div>
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Node types
+              </span>
+              <div className="flex flex-wrap gap-2 pt-1">
+                {NODE_TYPE_ORDER.map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    className={`cursor-pointer rounded-full border px-2.5 py-1 text-xs font-medium capitalize transition-colors duration-200 motion-reduce:transition-none ${
+                      nodeTypes.includes(type)
+                        ? "border-amber-400 bg-amber-100 text-amber-900"
+                        : "border-slate-300 text-slate-600 hover:border-amber-300 hover:bg-amber-50"
+                    }`}
+                    onClick={() => toggleNodeType(type)}
+                  >
+                    {type}
+                  </button>
+                ))}
               </div>
             </div>
-          )}
-        </aside>
-      </section>
+          </section>
+
+          {graphError ? (
+            <div className="mb-4 rounded-md border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700">{graphError}</div>
+          ) : null}
+
+          <section className="grid h-[76vh] grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
+            <div className="relative">
+              {graphLoading ? (
+                <div className="absolute inset-0 z-10 grid place-items-center rounded-xl border border-slate-700 bg-slate-950/85 text-amber-100">
+                  Loading graph...
+                </div>
+              ) : null}
+              <GraphCanvas
+                nodes={graphData.nodes}
+                edges={graphData.edges}
+                selectedNodeId={selectedNodeId}
+                searchTerm={searchTerm}
+                onNodeSelect={setSelectedNodeId}
+              />
+              <div
+                className={`pointer-events-none absolute left-4 top-4 max-w-lg rounded-2xl border border-amber-200/30 bg-slate-900/75 p-4 text-amber-50 backdrop-blur transition-opacity duration-500 motion-reduce:transition-none ${
+                  showHeroCopy ? "opacity-100" : "opacity-0"
+                }`}
+              >
+                <p className="text-xs uppercase tracking-[0.2em] text-amber-200/90">Data Visualization Hero</p>
+                <h2 className="mt-2 text-2xl font-semibold tracking-tight">Lenny&apos;s intellectual universe.</h2>
+                <p className="mt-2 text-sm text-amber-50/80">
+                  638 episodes and posts. One knowledge graph. Your next syllabus.
+                </p>
+              </div>
+            </div>
+
+            <aside className="h-full rounded-xl border border-slate-200 bg-white p-4">
+              {!selectedNodeId ? (
+                <div className="grid h-full place-items-center text-center text-sm text-slate-500">
+                  Click a node to inspect details and related content.
+                </div>
+              ) : detailLoading ? (
+                <div className="text-sm text-slate-600">Loading node details...</div>
+              ) : !selectedNodeDetail ? (
+                <div className="text-sm text-slate-600">No detail available for this node.</div>
+              ) : (
+                <div className="h-full overflow-y-auto">
+                  <h2 className="text-xl font-semibold text-slate-900">{selectedNodeDetail.node.label}</h2>
+                  <p className="mt-1 text-xs uppercase tracking-wide text-slate-500">{selectedNodeDetail.node.type}</p>
+                  <p className="mt-3 text-sm text-slate-700">
+                    Connected nodes: {selectedNodeDetail.connected_node_count}
+                  </p>
+
+                  <div className="mt-5">
+                    <h3 className="text-sm font-semibold text-slate-900">Related content</h3>
+                    {selectedNodeDetail.related_content.length > MAX_RELATED_CONTENT_ITEMS ? (
+                      <p className="mt-1 text-xs text-slate-500">
+                        Showing top {MAX_RELATED_CONTENT_ITEMS} of {selectedNodeDetail.related_content.length}
+                      </p>
+                    ) : null}
+                    <ul className="mt-2 space-y-2">
+                      {selectedNodeDetail.related_content.length === 0 ? (
+                        <li className="rounded-md border border-slate-200 bg-slate-50 p-2 text-sm text-slate-500">
+                          No related content rows available.
+                        </li>
+                      ) : (
+                        selectedNodeDetail.related_content.slice(0, MAX_RELATED_CONTENT_ITEMS).map((item) => (
+                          <li key={item.id} className="rounded-md border border-slate-200 bg-white p-2">
+                            <p className="text-sm font-medium text-slate-900">{item.title}</p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {item.content_type}
+                              {item.published_at ? ` · ${item.published_at}` : ""}
+                            </p>
+                            {item.guest ? <p className="mt-1 text-xs text-slate-500">Guest: {item.guest}</p> : null}
+                          </li>
+                        ))
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              )}
+            </aside>
+          </section>
+        </section>
+      ) : (
+        renderPlaceholder(activeView)
+      )}
     </main>
   );
 }
