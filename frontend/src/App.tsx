@@ -11,7 +11,25 @@ const INITIAL_GRAPH: GraphResponse = {
 
 const NODE_TYPE_ORDER: NodeType[] = ["guest", "topic", "content", "concept"];
 
+function formatDateInputValue(value: Date): string {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getInitialDateRange(): { startDate: string; endDate: string } {
+  const end = new Date();
+  const start = new Date(end);
+  start.setMonth(start.getMonth() - 2);
+  return {
+    startDate: formatDateInputValue(start),
+    endDate: formatDateInputValue(end),
+  };
+}
+
 export default function App(): JSX.Element {
+  const initialDateRange = getInitialDateRange();
   const [graphData, setGraphData] = useState<GraphResponse>(INITIAL_GRAPH);
   const [selectedNodeId, setSelectedNodeId] = useState<string>();
   const [selectedNodeDetail, setSelectedNodeDetail] = useState<NodeDetail | null>(null);
@@ -20,8 +38,8 @@ export default function App(): JSX.Element {
   const [graphError, setGraphError] = useState<string>();
   const [searchTerm, setSearchTerm] = useState("");
   const [topicFilter, setTopicFilter] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [startDate, setStartDate] = useState(initialDateRange.startDate);
+  const [endDate, setEndDate] = useState(initialDateRange.endDate);
   const [nodeTypes, setNodeTypes] = useState<NodeType[]>(["guest", "topic", "content"]);
 
   useEffect(() => {
