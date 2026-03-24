@@ -10,6 +10,7 @@ const INITIAL_GRAPH: GraphResponse = {
 };
 
 const NODE_TYPE_ORDER: NodeType[] = ["guest", "topic", "content", "concept"];
+const MAX_RELATED_CONTENT_ITEMS = 5;
 
 function formatDateInputValue(value: Date): string {
   const year = value.getFullYear();
@@ -257,13 +258,18 @@ export default function App(): JSX.Element {
 
               <div className="mt-5">
                 <h3 className="text-sm font-semibold text-slate-200">Related content</h3>
+                {selectedNodeDetail.related_content.length > MAX_RELATED_CONTENT_ITEMS ? (
+                  <p className="mt-1 text-xs text-slate-400">
+                    Showing top {MAX_RELATED_CONTENT_ITEMS} of {selectedNodeDetail.related_content.length}
+                  </p>
+                ) : null}
                 <ul className="mt-2 space-y-2">
                   {selectedNodeDetail.related_content.length === 0 ? (
                     <li className="rounded-md border border-slate-800 bg-slate-950/60 p-2 text-sm text-slate-400">
                       No related content rows available.
                     </li>
                   ) : (
-                    selectedNodeDetail.related_content.map((item) => (
+                    selectedNodeDetail.related_content.slice(0, MAX_RELATED_CONTENT_ITEMS).map((item) => (
                       <li key={item.id} className="rounded-md border border-slate-800 bg-slate-950/60 p-2">
                         <p className="text-sm font-medium text-slate-100">{item.title}</p>
                         <p className="mt-1 text-xs text-slate-400">

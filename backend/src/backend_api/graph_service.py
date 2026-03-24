@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
-from backend_api.graph_repository import GraphEdgeRecord, GraphNodeRecord, GraphRepository
+from backend_api.graph_repository import ContentRecord, GraphEdgeRecord, GraphNodeRecord, GraphRepository
 from backend_api.schemas import (
     GraphEdgeResponse,
     GraphNodeResponse,
@@ -81,8 +81,27 @@ class GraphService:
                 connected_ids.add(edge.target_node_id)
 
         related_nodes = self._repository.list_nodes_by_ids(sorted(connected_ids))
-        content_filenames = [str(n.metadata.get("filename")) for n in related_nodes if n.type == "content" and n.metadata.get("filename")]
-        related_content = self._repository.list_content_by_filenames(content_filenames)
+        content_node_ids: list[str] = []
+        for related_node in related_nodes:
+            if related_node.type != "content":
+                continue
+            content_id_suffix = related_node.id.removeprefix("content::")
+            content_node_ids.append(content_id_suffix)
+            content_node_ids.append(related_node.id)
+            content_type = str(related_node.metadata.get("content_type") or "").strip()
+            if content_type:
+                content_node_ids.append(f"{content_type}::{content_id_suffix}")
+
+        content_filenames = [
+            str(n.metadata.get("filename"))
+            for n in related_nodes
+            if n.type == "content" and n.metadata.get("filename")
+        ]
+
+        # Prefer content-id lookup because it's stable even if graph metadata lacks filename.
+        related_content_by_id = self._repository.list_content_by_ids(sorted(set(content_node_ids)))
+        related_content_by_filename = self._repository.list_content_by_filenames(content_filenames)
+        related_content = _dedupe_content_records_by_id(related_content_by_id + related_content_by_filename)
 
         return NodeDetailResponse(
             node=_to_node_response(node),
@@ -100,6 +119,17 @@ class GraphService:
                 for content in related_content
             ],
         )
+
+
+def _dedupe_content_records_by_id(contents: list[ContentRecord]) -> list[ContentRecord]:
+    seen_ids: set[str] = set()
+    deduped: list[ContentRecord] = []
+    for item in contents:
+        if item.id in seen_ids:
+            continue
+        seen_ids.add(item.id)
+        deduped.append(item)
+    return deduped
 
 
 def _to_node_response(node: GraphNodeRecord) -> GraphNodeResponse:

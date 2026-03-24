@@ -184,3 +184,31 @@ class GraphRepository:
             )
             for row in rows
         ]
+
+    def list_content_by_ids(self, content_ids: list[str]) -> list[ContentRecord]:
+        if not content_ids:
+            return []
+
+        query = """
+            SELECT id, title, type, published_at, guest, tags, filename
+            FROM content
+            WHERE id = ANY(%(content_ids)s)
+            ORDER BY published_at DESC NULLS LAST, title ASC
+        """
+        with self._connect() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(query, {"content_ids": content_ids})
+                rows = cur.fetchall()
+
+        return [
+            ContentRecord(
+                id=row["id"],
+                title=row["title"],
+                content_type=row["type"],
+                published_at=row.get("published_at"),
+                guest=row.get("guest"),
+                tags=list(row.get("tags") or []),
+                filename=row["filename"],
+            )
+            for row in rows
+        ]

@@ -96,6 +96,10 @@ class FakeGraphRepository:
         filename_set = set(filenames)
         return [item for item in self._content if item.filename in filename_set]
 
+    def list_content_by_ids(self, content_ids: list[str]) -> list[ContentRecord]:
+        content_id_set = set(content_ids)
+        return [item for item in self._content if item.id in content_id_set]
+
 
 def test_get_graph_returns_nodes_and_edges() -> None:
     app.dependency_overrides[get_graph_service] = lambda: GraphService(FakeGraphRepository())
@@ -137,6 +141,31 @@ def test_get_graph_node_returns_detail() -> None:
     payload = response.json()
     assert payload["node"]["id"] == "topic::growth"
     assert payload["connected_node_count"] == 2
+    assert payload["related_content"][0]["title"] == "Ada Chen Rekhi"
+
+    app.dependency_overrides.clear()
+
+
+def test_get_graph_node_returns_related_content_without_filename_metadata() -> None:
+    repository = FakeGraphRepository()
+    for index, node in enumerate(repository._nodes):
+        if node.id == "content::ada-chen-rekhi":
+            repository._nodes[index] = GraphNodeRecord(
+                id=node.id,
+                type=node.type,
+                label=node.label,
+                metadata={"date": "2023-04-16"},
+            )
+            break
+
+    app.dependency_overrides[get_graph_service] = lambda: GraphService(repository)
+    client = TestClient(app)
+
+    response = client.get("/api/graph/nodes/topic::growth")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["related_content"]
     assert payload["related_content"][0]["title"] == "Ada Chen Rekhi"
 
     app.dependency_overrides.clear()
