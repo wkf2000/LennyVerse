@@ -1,4 +1,4 @@
-FROM python:3.13-slim
+FROM python:3.13-slim AS backend
 
 WORKDIR /app
 
@@ -16,3 +16,16 @@ ENV PYTHONPATH="/app/backend/src:/app/data-pipeline/src"
 EXPOSE 8000
 
 CMD ["uv", "run", "uvicorn", "backend_api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+FROM node:22-alpine AS frontend
+
+WORKDIR /app/frontend
+
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm install
+
+COPY frontend ./
+
+EXPOSE 5173
+
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
