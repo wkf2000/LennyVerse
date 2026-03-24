@@ -8,8 +8,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  API_IMAGE: ghcr.io/${{ github.repository_owner }}/lennyverse-api
-  FRONTEND_IMAGE: ghcr.io/${{ github.repository_owner }}/lennyverse-frontend
+  APP_IMAGE: ghcr.io/${{ github.repository_owner }}/lennyverse
 
 jobs:
   build-and-push:
@@ -33,49 +32,26 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract API metadata
-        id: api_meta
+      - name: Extract image metadata
+        id: app_meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ env.API_IMAGE }}
+          images: ${{ env.APP_IMAGE }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Build and push API image
+      - name: Build and push app image
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
           target: backend
           push: true
-          tags: ${{ steps.api_meta.outputs.tags }}
-          labels: ${{ steps.api_meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Extract frontend metadata
-        id: frontend_meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.FRONTEND_IMAGE }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Build and push frontend image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./Dockerfile
-          target: frontend
-          push: true
-          tags: ${{ steps.frontend_meta.outputs.tags }}
-          labels: ${{ steps.frontend_meta.outputs.labels }}
+          tags: ${{ steps.app_meta.outputs.tags }}
+          labels: ${{ steps.app_meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

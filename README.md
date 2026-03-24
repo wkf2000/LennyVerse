@@ -27,10 +27,18 @@ AI-powered product wisdom platform built as a monorepo.
 ## Common Commands
 
 - API server: `make run-api`
+- Frontend dev server: `cd frontend && npm run dev`
 - Dry-run ingest (no writes): `make ingest-dry-run`
 - Limited ingest dry-run (first N docs): `make ingest-dry-run-limit LIMIT=10`
 - Limited ingest (first N docs): `make ingest-limit LIMIT=10`
 - Tests: `make test`
+
+## Production Deployment
+
+- Production uses a single container (`ghcr.io/<owner>/lennyverse`) that serves:
+  - FastAPI API endpoints under `/api/*`
+  - Built frontend assets from `frontend/dist`
+- This same-origin setup removes cross-origin calls in production and avoids CORS deployment issues.
 
 ## Operational Runbook (Phase 1)
 

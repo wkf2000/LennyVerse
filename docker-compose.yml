@@ -1,30 +1,16 @@
 services:
-  api:
-    image: "ghcr.io/wkf2000/lennyverse-api:latest"
-    container_name: lennyverse-api
+  app:
+    image: "ghcr.io/wkf2000/lennyverse:latest"
+    container_name: lennyverse
     restart: unless-stopped
     networks:
       - 1panel-network      
     ports:
-      - "8510:8000"
+      - "8511:8000"
     environment:
       - TZ=America/Los_Angeles
     env_file:
       - .env
-  frontend:
-    image: "ghcr.io/wkf2000/lennyverse-frontend:latest"
-    container_name: lennyverse-frontend
-    restart: unless-stopped
-    networks:
-      - 1panel-network      
-    ports:
-      - "8511:5173"
-    environment:
-      - TZ=America/Los_Angeles
-    env_file:
-      - .env
-    depends_on:
-      - api
 
 networks:
   1panel-network:

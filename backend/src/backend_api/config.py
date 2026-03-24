@@ -5,12 +5,6 @@ from functools import lru_cache
 from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-_DEFAULT_CORS_ORIGINS: tuple[str, ...] = (
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-)
-
-
 def _parse_cors_origins_csv(raw: str) -> list[str]:
     return [part.strip() for part in raw.split(",") if part.strip()]
 
@@ -26,7 +20,7 @@ class Settings(BaseSettings):
     def cors_allow_origins(self) -> list[str]:
         if self.cors_allow_origins_csv:
             return _parse_cors_origins_csv(self.cors_allow_origins_csv)
-        return list(_DEFAULT_CORS_ORIGINS)
+        return []
 
     def require_db_url(self) -> str:
         if not self.supabase_db_url:
