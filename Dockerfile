@@ -6,7 +6,6 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 COPY pyproject.toml README.md ./
 COPY backend ./backend
 COPY data-pipeline ./data-pipeline
-COPY data ./data
 
 RUN uv sync --no-dev
 
