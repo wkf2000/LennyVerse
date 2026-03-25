@@ -40,4 +40,31 @@ describe("App URL view sync", () => {
     fireEvent.click(within(nav).getByRole("button", { name: /^search$/ }));
     expect(window.location.pathname).toBe("/search");
   });
+
+  it("initial /about path shows About page heading", () => {
+    window.history.pushState({}, "", "/about");
+    render(<App />);
+    expect(
+      screen.getByRole("heading", {
+        level: 1,
+        name: /A teaching assistant built on Lenny Rachitsky's archive\./i,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("switching to about updates URL path to /about", () => {
+    render(<App />);
+    const nav = screen.getByRole("navigation");
+    fireEvent.click(within(nav).getByRole("button", { name: /^about$/ }));
+    expect(window.location.pathname).toBe("/about");
+  });
+
+  it("marks About nav button current when on /about", () => {
+    window.history.pushState({}, "", "/about");
+    render(<App />);
+    const nav = screen.getByRole("navigation");
+    const aboutBtn = within(nav).getByRole("button", { name: /^about$/ });
+    expect(aboutBtn).toHaveAttribute("aria-current", "page");
+    expect(aboutBtn).toHaveClass("bg-slate-900");
+  });
 });

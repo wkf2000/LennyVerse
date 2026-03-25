@@ -4,6 +4,7 @@ import { fetchGraph, fetchNodeDetail } from "./api/graphApi";
 import GraphCanvas from "./components/GraphCanvas";
 import SearchWorkspace from "./components/search/SearchWorkspace";
 import type { GraphResponse, NodeDetail, NodeType } from "./types/graph";
+import AboutPage from "./views/AboutPage";
 import GenerateWorkspace from "./views/GenerateWorkspace";
 
 const INITIAL_GRAPH: GraphResponse = {
@@ -14,7 +15,7 @@ const INITIAL_GRAPH: GraphResponse = {
 const NODE_TYPE_ORDER: NodeType[] = ["guest", "topic", "content", "concept"];
 const MAX_RELATED_CONTENT_ITEMS = 5;
 const VIEWS = ["graph", "search", "generate", "about"] as const;
-const NAV_VIEWS = ["graph", "search", "generate"] as const;
+const NAV_VIEWS = ["graph", "search", "generate", "about"] as const;
 
 type View = (typeof VIEWS)[number];
 
@@ -185,45 +186,6 @@ export default function App(): JSX.Element {
     });
   }
 
-  function renderPlaceholder(view: Exclude<View, "graph" | "search">): JSX.Element {
-    const contentByView: Record<Exclude<View, "graph" | "search">, { title: string; body: string; tips: string[] }> = {
-      generate: {
-        title: "Create View Placeholder",
-        body: "Agentic material generation lands here. This page will stream planning and tool-use steps while building structured outputs like syllabi and quizzes.",
-        tips: [
-          "Prompt composer and reusable templates",
-          "Live agent step log with tool traces",
-          "Progressive syllabus/quiz output with citations",
-        ],
-      },
-      about: {
-        title: "About Placeholder",
-        body: "Mission and implementation overview goes here. This section will explain how the app supports educators and aligns with Gonzaga's leadership and service principles.",
-        tips: [
-          "Project purpose and audience",
-          "Ethical AI framing and transparency",
-          "Architecture snapshot for interview demos",
-        ],
-      },
-    };
-    const page = contentByView[view];
-    return (
-      <section className="mx-auto max-w-6xl px-4 pb-8 pt-28 sm:px-6 lg:px-8">
-        <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-          <h2 className="text-3xl font-semibold tracking-tight text-slate-900">{page.title}</h2>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">{page.body}</p>
-          <div className="mt-6 grid gap-3 md:grid-cols-3">
-            {page.tips.map((tip) => (
-              <div key={tip} className="rounded-2xl border border-amber-200/70 bg-amber-50 p-4 text-sm text-slate-700">
-                {tip}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-    );
-  }
-
   return (
     <main className="min-h-screen bg-[#fffaf3] text-slate-900">
       <nav className="fixed right-4 top-4 z-50">
@@ -234,6 +196,7 @@ export default function App(): JSX.Element {
               <button
                 key={view}
                 type="button"
+                aria-current={isActive ? "page" : undefined}
                 className={`cursor-pointer rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-wide transition-colors duration-200 motion-reduce:transition-none ${
                   isActive ? "bg-slate-900 text-amber-100" : "text-slate-600 hover:bg-amber-50 hover:text-slate-900"
                 }`}
@@ -442,9 +405,9 @@ export default function App(): JSX.Element {
           </header>
           <GenerateWorkspace />
         </section>
-      ) : (
-        renderPlaceholder(activeView)
-      )}
+      ) : activeView === "about" ? (
+        <AboutPage />
+      ) : null}
     </main>
   );
 }
