@@ -66,19 +66,23 @@ def normalize_cosine_distance_score(distance: float) -> float:
     return max(0.0, min(1.0, raw))
 
 
-def _build_openai_client(settings: Settings) -> OpenAI:
-    if not settings.openai_api_key:
-        msg = "OPENAI_API_KEY is required for RAG search when no embed_query override is provided."
+def _build_embedding_client(settings: Settings) -> OpenAI:
+    """
+    Embeddings use the Ollama OpenAI-compatible endpoint (not the chat LLM provider).
+    """
+    base = (settings.ollama_embed_base_url or "").strip()
+    if not base:
+        msg = "OLLAMA_EMBED_BASE_URL is required for RAG search when no embed_query override is provided."
         raise ValueError(msg)
     return OpenAI(
-        api_key=settings.openai_api_key,
-        base_url=settings.openai_api_base or None,
+        api_key=settings.embedding_api_key,
+        base_url=base.rstrip("/"),
     )
 
 
 def _default_embed_query(settings: Settings, client: OpenAI) -> Callable[[str], list[float]]:
     def embed(text: str) -> list[float]:
-        response = client.embeddings.create(model=settings.openai_embedding_model, input=text)
+        response = client.embeddings.create(model=settings.embedding_model, input=text)
         return list(response.data[0].embedding)
 
     return embed
@@ -234,12 +238,12 @@ class RagService:
     ) -> None:
         self._repository = repository
         self._settings = settings
-        self._openai_client: OpenAI | None = None
+        self._embedding_client: OpenAI | None = None
         if embed_query is not None:
             self._embed_query = embed_query
         else:
-            self._openai_client = _build_openai_client(settings)
-            self._embed_query = _default_embed_query(settings, self._openai_client)
+            self._embedding_client = _build_embedding_client(settings)
+            self._embed_query = _default_embed_query(settings, self._embedding_client)
 
     def search(
         self,

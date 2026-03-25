@@ -18,7 +18,14 @@ class Settings(BaseSettings):
     openai_api_base: str | None = Field(default=None, alias="OPENAI_API_BASE")
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
     openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
-    openai_embedding_model: str = Field(default="text-embedding-3-small", alias="OPENAI_EMBEDDING_MODEL")
+
+    # Query-time embeddings: OpenAI-compatible API at Ollama (same as data pipeline ingest).
+    ollama_embed_base_url: str = Field(
+        default="http://localhost:11434/v1",
+        alias="OLLAMA_EMBED_BASE_URL",
+    )
+    embedding_api_key: str = Field(default="ollama", alias="EMBEDDING_API_KEY")
+    embedding_model: str = Field(default="embeddinggemma", alias="EMBEDDING_MODEL")
 
     rag_default_k: int = Field(default=8, alias="RAG_DEFAULT_K")
     rag_max_k: int = Field(default=32, alias="RAG_MAX_K")

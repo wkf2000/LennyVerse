@@ -191,7 +191,7 @@ def test_search_applies_filters(unset_rag_env) -> None:
     assert len(repo.last_call["query_embedding"]) == 768
 
 
-def test_service_reuses_openai_client_across_search_calls(monkeypatch: pytest.MonkeyPatch, unset_rag_env) -> None:
+def test_service_reuses_embedding_client_across_search_calls(monkeypatch: pytest.MonkeyPatch, unset_rag_env) -> None:
     from backend_api.config import Settings
     from backend_api.rag_service import RagService
 
@@ -212,7 +212,6 @@ def test_service_reuses_openai_client_across_search_calls(monkeypatch: pytest.Mo
             self.embeddings = _FakeEmbeddings()
             type(self).embeddings_api = self.embeddings
 
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr("backend_api.rag_service.OpenAI", _FakeOpenAI)
 
     repo = RecordingFakeRagRepository([])
