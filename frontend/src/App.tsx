@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { fetchGraph, fetchNodeDetail } from "./api/graphApi";
 import GraphCanvas from "./components/GraphCanvas";
+import SearchWorkspace from "./components/search/SearchWorkspace";
 import type { GraphResponse, NodeDetail, NodeType } from "./types/graph";
 
 const INITIAL_GRAPH: GraphResponse = {
@@ -14,6 +15,30 @@ const MAX_RELATED_CONTENT_ITEMS = 5;
 const VIEWS = ["graph", "search", "generate", "about"] as const;
 
 type View = (typeof VIEWS)[number];
+
+const VIEW_PATHS: Record<View, string> = {
+  graph: "/",
+  search: "/search",
+  generate: "/generate",
+  about: "/about",
+};
+
+function normalizePathname(pathname: string): string {
+  if (pathname.length > 1 && pathname.endsWith("/")) {
+    return pathname.replace(/\/+$/, "") || "/";
+  }
+  return pathname;
+}
+
+function viewFromPathname(pathname: string): View {
+  const path = normalizePathname(pathname);
+  for (const view of VIEWS) {
+    if (VIEW_PATHS[view] === path) {
+      return view;
+    }
+  }
+  return "graph";
+}
 
 function formatDateInputValue(value: Date): string {
   const year = value.getFullYear();
@@ -45,8 +70,24 @@ export default function App(): JSX.Element {
   const [startDate, setStartDate] = useState(initialDateRange.startDate);
   const [endDate, setEndDate] = useState(initialDateRange.endDate);
   const [nodeTypes, setNodeTypes] = useState<NodeType[]>(["guest", "topic", "content"]);
-  const [activeView, setActiveView] = useState<View>("graph");
+  const [activeView, setActiveView] = useState<View>(() => viewFromPathname(window.location.pathname));
   const [showHeroCopy, setShowHeroCopy] = useState(false);
+
+  useEffect(() => {
+    const handlePopState = (): void => {
+      setActiveView(viewFromPathname(window.location.pathname));
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  function goToView(view: View): void {
+    const target = VIEW_PATHS[view];
+    if (normalizePathname(window.location.pathname) !== target) {
+      window.history.pushState(null, "", target);
+    }
+    setActiveView(view);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -142,17 +183,8 @@ export default function App(): JSX.Element {
     });
   }
 
-  function renderPlaceholder(view: Exclude<View, "graph">): JSX.Element {
-    const contentByView: Record<Exclude<View, "graph">, { title: string; body: string; tips: string[] }> = {
-      search: {
-        title: "Search View Placeholder",
-        body: "Perplexity-style semantic search panel is reserved here. You will query the corpus and inspect grounded citations side-by-side with detailed source context.",
-        tips: [
-          "Unified query input with example prompts",
-          "Streaming AI answer with citation rows",
-          "Open any result and jump back to graph context",
-        ],
-      },
+  function renderPlaceholder(view: Exclude<View, "graph" | "search">): JSX.Element {
+    const contentByView: Record<Exclude<View, "graph" | "search">, { title: string; body: string; tips: string[] }> = {
       generate: {
         title: "Create View Placeholder",
         body: "Agentic material generation lands here. This page will stream planning and tool-use steps while building structured outputs like syllabi and quizzes.",
@@ -203,7 +235,7 @@ export default function App(): JSX.Element {
                 className={`cursor-pointer rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-wide transition-colors duration-200 motion-reduce:transition-none ${
                   isActive ? "bg-slate-900 text-amber-100" : "text-slate-600 hover:bg-amber-50 hover:text-slate-900"
                 }`}
-                onClick={() => setActiveView(view)}
+                onClick={() => goToView(view)}
               >
                 {view}
               </button>
@@ -380,6 +412,19 @@ export default function App(): JSX.Element {
               )}
             </aside>
           </section>
+        </section>
+      ) : activeView === "search" ? (
+        <section className="mx-auto max-w-7xl px-4 pb-8 pt-24 sm:px-6 lg:px-8">
+          <header className="mb-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">LennyVerse</p>
+            <h1 className="mt-2 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
+              Search the archive with grounded answers.
+            </h1>
+            <p className="mt-3 max-w-3xl text-sm text-slate-600">
+              Ask one question to retrieve sources, stream a cited answer, and inspect excerpts side-by-side.
+            </p>
+          </header>
+          <SearchWorkspace />
         </section>
       ) : (
         renderPlaceholder(activeView)
