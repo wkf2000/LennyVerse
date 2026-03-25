@@ -4,6 +4,7 @@ import { fetchGraph, fetchNodeDetail } from "./api/graphApi";
 import GraphCanvas from "./components/GraphCanvas";
 import SearchWorkspace from "./components/search/SearchWorkspace";
 import type { GraphResponse, NodeDetail, NodeType } from "./types/graph";
+import GenerateWorkspace from "./views/GenerateWorkspace";
 
 const INITIAL_GRAPH: GraphResponse = {
   nodes: [],
@@ -425,6 +426,20 @@ export default function App(): JSX.Element {
             </p>
           </header>
           <SearchWorkspace />
+        </section>
+      ) : activeView === "generate" ? (
+        <section className="mx-auto max-w-7xl px-4 pb-8 pt-24 sm:px-6 lg:px-8">
+          <header className="mb-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">LennyVerse</p>
+            <h1 className="mt-2 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
+              Build a syllabus and quiz from the archive.
+            </h1>
+            <p className="mt-3 max-w-3xl text-sm text-slate-600">
+              Generate a course outline first, review it, then run full syllabus and assessment generation with
+              transparent step logs and grounded sources.
+            </p>
+          </header>
+          <GenerateWorkspace />
         </section>
       ) : (
         renderPlaceholder(activeView)

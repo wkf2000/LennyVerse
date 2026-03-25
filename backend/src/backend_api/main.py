@@ -11,6 +11,8 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend_api.config import Settings, get_settings
+from backend_api.generate_schemas import ExecuteRequest, OutlineRequest, OutlineResponse
+from backend_api.generate_service import GenerateService
 from backend_api.llm_client import ChatCompletionStreamer, OpenAiCompatibleChatStreamer
 from backend_api.graph_repository import GraphRepository
 from backend_api.graph_service import GraphFilters, GraphService
@@ -20,6 +22,7 @@ from backend_api.rag_service import (
     RagFilterValidationError,
     RagRetrievalTimeoutError,
     RagService,
+    format_sse_event,
     validate_rag_filters,
 )
 from backend_api.schemas import GraphResponse, NodeDetailResponse, NodeType
@@ -70,6 +73,13 @@ def get_llm_client(app_settings: Annotated[Settings, Depends(get_settings)]) -> 
         return OpenAiCompatibleChatStreamer(app_settings)
     except ValueError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+def get_generate_service(
+    repository: Annotated[RagRepository, Depends(get_rag_repository)],
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> GenerateService:
+    return GenerateService(repository=repository, settings=app_settings)
 
 
 @app.get("/health")
@@ -145,6 +155,35 @@ def post_chat(
             chat_timeout_seconds=app_settings.rag_chat_timeout_seconds,
             model=app_settings.openai_model,
         )
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app.post("/api/generate/outline", response_model=OutlineResponse)
+def post_generate_outline(
+    body: OutlineRequest,
+    service: Annotated[GenerateService, Depends(get_generate_service)],
+) -> OutlineResponse:
+    return service.generate_outline(
+        topic=body.topic,
+        num_weeks=body.num_weeks,
+        difficulty=body.difficulty,
+    )
+
+
+@app.post("/api/generate/execute")
+def post_generate_execute(
+    body: ExecuteRequest,
+    service: Annotated[GenerateService, Depends(get_generate_service)],
+) -> StreamingResponse:
+    def event_stream() -> Iterator[str]:
+        for event_name, payload in service.iter_generate_sse_events(
+            topic=body.topic,
+            num_weeks=body.num_weeks,
+            difficulty=body.difficulty,
+            approved_outline=body.approved_outline,
+        ):
+            yield format_sse_event(event_name, payload)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

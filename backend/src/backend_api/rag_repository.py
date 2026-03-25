@@ -122,6 +122,49 @@ class RagRepository:
 
         return [_row_to_hit(row) for row in rows]
 
+    def fetch_chunks_by_content_ids(
+        self,
+        content_ids: list[str],
+        max_chunks_per_content: int = 5,
+    ) -> list[RagChunkHit]:
+        if not content_ids:
+            return []
+
+        sql = """
+            SELECT
+                ranked.id AS chunk_id,
+                ranked.content_id,
+                ranked.chunk_index,
+                ranked.text AS chunk_text,
+                c.title,
+                c.guest,
+                c.published_at,
+                c.tags,
+                c.type AS content_type
+            FROM (
+                SELECT
+                    ch.*,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY ch.content_id
+                        ORDER BY ch.chunk_index ASC
+                    ) AS row_num
+                FROM chunks ch
+                WHERE ch.content_id = ANY(%(content_ids)s)
+            ) AS ranked
+            INNER JOIN content c ON c.id = ranked.content_id
+            WHERE ranked.row_num <= %(max_per)s
+            ORDER BY ranked.content_id ASC, ranked.chunk_index ASC
+        """
+        params = {"content_ids": content_ids, "max_per": max(1, int(max_chunks_per_content))}
+        timeout_ms = self._timeout_seconds * 1000
+        with self._connect() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(f"SET LOCAL statement_timeout = {timeout_ms}")
+                cur.execute(sql, params)
+                rows = cur.fetchall()
+
+        return [_row_to_hit_no_distance(row) for row in rows]
+
 
 def _row_to_hit(row: dict[str, Any]) -> RagChunkHit:
     return RagChunkHit(
@@ -135,4 +178,19 @@ def _row_to_hit(row: dict[str, Any]) -> RagChunkHit:
         tags=list(row.get("tags") or []),
         content_type=row["content_type"],
         embedding_distance=float(row["embedding_distance"]),
+    )
+
+
+def _row_to_hit_no_distance(row: dict[str, Any]) -> RagChunkHit:
+    return RagChunkHit(
+        chunk_id=row["chunk_id"],
+        content_id=row["content_id"],
+        chunk_index=int(row["chunk_index"]),
+        chunk_text=row["chunk_text"],
+        title=row["title"],
+        guest=row.get("guest"),
+        published_at=row.get("published_at"),
+        tags=list(row.get("tags") or []),
+        content_type=row["content_type"],
+        embedding_distance=0.0,
     )

@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     rag_max_k: int = Field(default=32, alias="RAG_MAX_K")
     rag_retrieval_timeout_seconds: int = Field(default=30, alias="RAG_RETRIEVAL_TIMEOUT_SECONDS")
     rag_chat_timeout_seconds: int = Field(default=120, alias="RAG_CHAT_TIMEOUT_SECONDS")
+    generate_max_weeks: int = Field(default=16, alias="GENERATE_MAX_WEEKS")
+    generate_retrieval_k_per_reading: int = Field(default=5, alias="GENERATE_RETRIEVAL_K_PER_READING")
+    generate_outline_k: int = Field(default=30, alias="GENERATE_OUTLINE_K")
+    generate_timeout_seconds: int = Field(default=120, alias="GENERATE_TIMEOUT_SECONDS")
 
     @computed_field
     @property
