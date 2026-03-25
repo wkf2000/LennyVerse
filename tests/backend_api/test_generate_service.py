@@ -469,3 +469,89 @@ def test_langgraph_continues_on_single_week_failure(unset_rag_env) -> None:
     statuses = [week["status"] for week in results[0][1]["syllabus"]["weeks"]]
     assert "incomplete" in statuses
     assert "complete" in statuses
+
+
+def test_langgraph_recovers_when_week_readings_are_strings_and_quiz_counts_are_ints(unset_rag_env) -> None:
+    from backend_api.config import Settings
+    from backend_api.generate_schemas import ReadingRef, WeekOutline
+    from backend_api.generate_service import GenerateService
+
+    outline = [
+        WeekOutline(
+            week_number=1,
+            theme="Pricing Foundations",
+            description="Desc",
+            readings=[
+                ReadingRef(
+                    content_id="newsletter::pricing-101",
+                    title="Pricing 101",
+                    content_type="newsletter",
+                    relevance_summary="Core",
+                )
+            ],
+        )
+    ]
+    repo = FakeRepoWithChunkFetch(
+        [
+            RagChunkHit(
+                chunk_id="ch-1",
+                content_id="newsletter::pricing-101",
+                chunk_index=0,
+                chunk_text="Pricing text",
+                title="Pricing 101",
+                guest=None,
+                published_at=None,
+                tags=[],
+                content_type="newsletter",
+                embedding_distance=0.0,
+            )
+        ]
+    )
+    settings = Settings(_env_file=None)
+
+    def malformed_payload_llm(messages: list[dict[str, str]], model: str, response_format: object = None) -> str:
+        del model, response_format
+        system = messages[0]["content"].lower()
+        if "course material for week" in system:
+            return json.dumps(
+                {
+                    "learning_objectives": "Understand pricing basics",
+                    "narrative_summary": "Pricing ties to value [cite:chunk:newsletter::pricing-101:0]",
+                    "readings": ["Pricing 101", "Value metrics"],
+                    "key_takeaways": "Test willingness to pay",
+                }
+            )
+        if "assessment designer" in system or "quiz" in system:
+            return json.dumps(
+                {
+                    "title": "Pricing Quiz",
+                    "total_questions": 8,
+                    "multiple_choice": 6,
+                    "short_answer": 2,
+                }
+            )
+        return json.dumps({})
+
+    service = GenerateService(
+        repository=repo,  # type: ignore[arg-type]
+        settings=settings,
+        embed_query=lambda _q: [0.0] * 768,
+        llm_json_call=malformed_payload_llm,
+    )
+    events = list(
+        service.iter_generate_sse_events(
+            topic="Pricing",
+            num_weeks=1,
+            difficulty="intro",
+            approved_outline=outline,
+        )
+    )
+
+    results = [event for event in events if event[0] == "result"]
+    assert len(results) == 1
+    payload = results[0][1]
+    assert payload["syllabus"]["weeks"][0]["status"] == "complete"
+    assert isinstance(payload["quiz"]["multiple_choice"], list)
+    assert isinstance(payload["quiz"]["short_answer"], list)
+    assert len(payload["quiz"]["multiple_choice"]) == 6
+    assert len(payload["quiz"]["short_answer"]) == 2
