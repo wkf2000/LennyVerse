@@ -555,3 +555,315 @@ def test_langgraph_recovers_when_week_readings_are_strings_and_quiz_counts_are_i
     assert isinstance(payload["quiz"]["short_answer"], list)
     assert len(payload["quiz"]["multiple_choice"]) == 6
     assert len(payload["quiz"]["short_answer"]) == 2
+
+
+def test_langgraph_quiz_retries_after_int_counts_then_returns_real_questions(unset_rag_env) -> None:
+    from backend_api.config import Settings
+    from backend_api.generate_schemas import ReadingRef, WeekOutline
+    from backend_api.generate_service import GenerateService
+
+    outline = [
+        WeekOutline(
+            week_number=1,
+            theme="Pricing Foundations",
+            description="Desc",
+            readings=[
+                ReadingRef(
+                    content_id="newsletter::pricing-101",
+                    title="Pricing 101",
+                    content_type="newsletter",
+                    relevance_summary="Core",
+                )
+            ],
+        )
+    ]
+    repo = FakeRepoWithChunkFetch(
+        [
+            RagChunkHit(
+                chunk_id="ch-1",
+                content_id="newsletter::pricing-101",
+                chunk_index=0,
+                chunk_text="Pricing text",
+                title="Pricing 101",
+                guest=None,
+                published_at=None,
+                tags=[],
+                content_type="newsletter",
+                embedding_distance=0.0,
+            )
+        ]
+    )
+    settings = Settings(_env_file=None)
+
+    valid_quiz = {
+        "title": "Real Quiz",
+        "total_questions": 3,
+        "multiple_choice": [
+            {
+                "question_number": 1,
+                "question": "Mc one?",
+                "options": [
+                    {"label": "A", "text": "x"},
+                    {"label": "B", "text": "y"},
+                    {"label": "C", "text": "z"},
+                    {"label": "D", "text": "w"},
+                ],
+                "correct_answer": "A",
+                "explanation": "Because.",
+                "source_week": 1,
+            },
+            {
+                "question_number": 2,
+                "question": "Mc two?",
+                "options": [
+                    {"label": "A", "text": "x"},
+                    {"label": "B", "text": "y"},
+                    {"label": "C", "text": "z"},
+                    {"label": "D", "text": "w"},
+                ],
+                "correct_answer": "B",
+                "explanation": "Because 2.",
+                "source_week": 1,
+            },
+        ],
+        "short_answer": [
+            {
+                "question_number": 3,
+                "question": "Explain?",
+                "model_answer": "Answer.",
+                "grading_guidance": "Grade.",
+                "source_week": [1],
+            },
+        ],
+    }
+
+    def two_phase_quiz_llm(messages: list[dict[str, str]], model: str, response_format: object = None) -> str:
+        del model, response_format
+        system = messages[0]["content"]
+        low = system.lower()
+        if "course material for week" in low:
+            return json.dumps(
+                {
+                    "learning_objectives": ["Understand pricing basics"],
+                    "narrative_summary": "Pricing ties to value [cite:chunk:newsletter::pricing-101:0]",
+                    "readings": [
+                        {
+                            "content_id": "newsletter::pricing-101",
+                            "title": "Pricing 101",
+                            "content_type": "newsletter",
+                            "key_concepts": ["kc"],
+                            "notable_quotes": [],
+                            "discussion_hooks": [],
+                        }
+                    ],
+                    "key_takeaways": ["Test willingness to pay"],
+                }
+            )
+        if "prior reply incorrectly" in system:
+            return json.dumps(valid_quiz)
+        if "assessment designer" in low:
+            return json.dumps(
+                {
+                    "title": "Bad",
+                    "total_questions": 3,
+                    "multiple_choice": 2,
+                    "short_answer": 1,
+                }
+            )
+        return json.dumps({})
+
+    service = GenerateService(
+        repository=repo,  # type: ignore[arg-type]
+        settings=settings,
+        embed_query=lambda _q: [0.0] * 768,
+        llm_json_call=two_phase_quiz_llm,
+    )
+    events = list(
+        service.iter_generate_sse_events(
+            topic="Pricing",
+            num_weeks=1,
+            difficulty="intro",
+            approved_outline=outline,
+        )
+    )
+
+    results = [event for event in events if event[0] == "result"]
+    assert len(results) == 1
+    payload = results[0][1]
+    assert payload["quiz"]["title"] == "Real Quiz"
+    assert len(payload["quiz"]["multiple_choice"]) == 2
+    assert len(payload["quiz"]["short_answer"]) == 1
+    assert payload["quiz"]["multiple_choice"][0]["question"] == "Mc one?"
+    assert "[Fallback]" not in payload["quiz"]["multiple_choice"][0]["question"]
+
+
+def test_langgraph_quiz_repairs_invalid_json_then_validates(unset_rag_env) -> None:
+    from backend_api.config import Settings
+    from backend_api.generate_schemas import ReadingRef, WeekOutline
+    from backend_api.generate_service import GenerateService
+
+    outline = [
+        WeekOutline(
+            week_number=1,
+            theme="Pricing Foundations",
+            description="Desc",
+            readings=[
+                ReadingRef(
+                    content_id="newsletter::pricing-101",
+                    title="Pricing 101",
+                    content_type="newsletter",
+                    relevance_summary="Core",
+                )
+            ],
+        )
+    ]
+    repo = FakeRepoWithChunkFetch(
+        [
+            RagChunkHit(
+                chunk_id="ch-1",
+                content_id="newsletter::pricing-101",
+                chunk_index=0,
+                chunk_text="Pricing text",
+                title="Pricing 101",
+                guest=None,
+                published_at=None,
+                tags=[],
+                content_type="newsletter",
+                embedding_distance=0.0,
+            )
+        ]
+    )
+    settings = Settings(_env_file=None)
+
+    valid_quiz = {
+        "title": "After repair",
+        "total_questions": 2,
+        "multiple_choice": [
+            {
+                "question_number": 1,
+                "question": "Q?",
+                "options": [
+                    {"label": "A", "text": "a"},
+                    {"label": "B", "text": "b"},
+                    {"label": "C", "text": "c"},
+                    {"label": "D", "text": "d"},
+                ],
+                "correct_answer": "A",
+                "explanation": "e",
+                "source_week": 1,
+            }
+        ],
+        "short_answer": [
+            {
+                "question_number": 2,
+                "question": "Q2?",
+                "model_answer": "m",
+                "grading_guidance": "g",
+                "source_week": [1],
+            }
+        ],
+    }
+
+    def repair_llm(messages: list[dict[str, str]], model: str, response_format: object = None) -> str:
+        del model, response_format
+        system = messages[0]["content"]
+        low = system.lower()
+        if "course material for week" in low:
+            return json.dumps(
+                {
+                    "learning_objectives": ["o"],
+                    "narrative_summary": "s [cite:chunk:newsletter::pricing-101:0]",
+                    "readings": [
+                        {
+                            "content_id": "newsletter::pricing-101",
+                            "title": "Pricing 101",
+                            "content_type": "newsletter",
+                            "key_concepts": ["kc"],
+                            "notable_quotes": [],
+                            "discussion_hooks": [],
+                        }
+                    ],
+                    "key_takeaways": ["t"],
+                }
+            )
+        if "rfc 8259" in low:
+            return json.dumps(valid_quiz)
+        if "assessment designer" in low:
+            return "{'invalid': 'single-quoted-json'}"
+        return json.dumps({})
+
+    service = GenerateService(
+        repository=repo,  # type: ignore[arg-type]
+        settings=settings,
+        embed_query=lambda _q: [0.0] * 768,
+        llm_json_call=repair_llm,
+    )
+    events = list(
+        service.iter_generate_sse_events(
+            topic="Pricing",
+            num_weeks=1,
+            difficulty="intro",
+            approved_outline=outline,
+        )
+    )
+
+    results = [event for event in events if event[0] == "result"]
+    assert len(results) == 1
+    payload = results[0][1]
+    assert payload["quiz"]["title"] == "After repair"
+    assert len(payload["quiz"]["multiple_choice"]) == 1
+
+
+def test_coerce_quiz_payload_maps_string_options_and_answer_alias(unset_rag_env) -> None:
+    from backend_api.generate_schemas import GeneratedQuiz, GeneratedReading, GeneratedWeek
+    from backend_api.generate_service import _coerce_quiz_payload
+
+    reading = GeneratedReading(
+        content_id="x",
+        title="t",
+        content_type="newsletter",
+        key_concepts=[],
+        notable_quotes=[],
+        discussion_hooks=[],
+    )
+    weeks = [
+        GeneratedWeek(
+            week_number=1,
+            theme="T",
+            status="complete",
+            learning_objectives=[],
+            narrative_summary="",
+            readings=[reading],
+            key_takeaways=[],
+        )
+    ]
+    raw: dict = {
+        "title": "Sample",
+        "total_questions": 99,
+        "multiple_choice": [
+            {
+                "question": "According to Week 1, which concept?",
+                "options": [
+                    "Maximizing individual output",
+                    "Using team resources as leverage",
+                    "Focusing solely on technical execution",
+                    "Prioritizing stakeholder satisfaction",
+                ],
+                "answer": "Using team resources as leverage",
+            }
+        ],
+        "short_answer": [
+            {
+                "question": "Week 2 explain pricing.",
+                "model_answer": "Value-based.",
+                "grading_guidance": "Cite readings.",
+                "source_week": 2,
+            }
+        ],
+    }
+    coerced = _coerce_quiz_payload(raw, weeks)
+    quiz = GeneratedQuiz.model_validate(coerced)
+    assert quiz.total_questions == 2
+    assert quiz.multiple_choice[0].correct_answer == "B"
+    assert quiz.multiple_choice[0].source_week == 1
+    assert quiz.short_answer[0].source_week == [2]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections.abc import Callable, Iterator
 from typing import Any, TypedDict
@@ -33,6 +34,209 @@ def _as_list_of_str(value: Any) -> list[str]:
         stripped = value.strip()
         return [stripped] if stripped else []
     return []
+
+
+def _quiz_int_counts_for_retry(parsed: dict[str, Any]) -> tuple[int, int] | None:
+    """Detect mistaken payloads where the model returned counts instead of question arrays."""
+    mc = parsed.get("multiple_choice")
+    sa = parsed.get("short_answer")
+    if not isinstance(mc, int) or not isinstance(sa, int):
+        return None
+    if mc < 1 or mc > 30 or sa < 0 or sa > 30:
+        return None
+    return (mc, sa)
+
+
+def _build_quiz_retry_system_prompt(topic: str, difficulty: str, mc_n: int, sa_n: int) -> str:
+    total = mc_n + sa_n
+    first_sa = mc_n + 1
+    return (
+        "You are an assessment designer. A prior reply incorrectly used integers for "
+        '"multiple_choice" and "short_answer" instead of arrays of question objects. '
+        "This response must be valid JSON only.\n\n"
+        f"Course topic: {topic!r}. Level: {difficulty}.\n"
+        f"Produce exactly {mc_n} multiple-choice questions (question_number 1 through {mc_n}) "
+        f"and {sa_n} short-answer questions (question_number {first_sa} through {total}).\n"
+        f"Set total_questions to {total}.\n\n"
+        "Required top-level keys: title (string), total_questions (int), multiple_choice (array), "
+        "short_answer (array).\n"
+        "Each multiple_choice element must be an object with: question_number (int), question (string), "
+        "options (array of exactly 4 objects; each has label A/B/C/D and text string), "
+        "correct_answer (string, single letter A-D), explanation (string), source_week (integer).\n"
+        "Each short_answer element must be an object with: question_number (int), question (string), "
+        "model_answer (string), grading_guidance (string), source_week (array of integers such as [1] or [2, 3]).\n"
+        "Never set multiple_choice or short_answer to a number — only to arrays of objects."
+    )
+
+
+def _infer_source_week_from_question_text(question: str, fallback: int) -> int:
+    m = re.search(r"[Ww]eek\s+(\d+)", question or "")
+    return int(m.group(1)) if m else fallback
+
+
+def _answer_text_to_letter(answer: str, options: list[dict[str, str]]) -> str:
+    a = (answer or "").strip()
+    if not a:
+        return options[0]["label"] if options else "A"
+    if len(a) == 1 and a.upper() in "ABCDEFGH":
+        return a.upper()
+    a_lower = a.lower()
+    for opt in options:
+        if opt["text"].strip().lower() == a_lower:
+            return opt["label"]
+    for opt in options:
+        ot = opt["text"].strip().lower()
+        if a_lower in ot or ot in a_lower:
+            return opt["label"]
+    return options[0]["label"] if options else "A"
+
+
+def _normalize_quiz_mc_item(raw_item: Any, idx: int, fallback_week: int) -> dict[str, Any]:
+    if not isinstance(raw_item, dict):
+        return {
+            "question_number": idx + 1,
+            "question": str(raw_item),
+            "options": [
+                {"label": "A", "text": "—"},
+                {"label": "B", "text": "—"},
+                {"label": "C", "text": "—"},
+                {"label": "D", "text": "—"},
+            ],
+            "correct_answer": "A",
+            "explanation": "Recovered placeholder for a non-object quiz row.",
+            "source_week": fallback_week,
+        }
+    item = dict(raw_item)
+    letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    if item.get("question_number") is None:
+        item["question_number"] = idx + 1
+    opts = item.get("options")
+    fixed_opts: list[dict[str, str]] = []
+    if isinstance(opts, list) and opts:
+        if isinstance(opts[0], str):
+            texts = [str(t).strip() for t in opts if str(t).strip()]
+            fixed_opts = [{"label": letters[j], "text": texts[j]} for j in range(min(len(texts), 8))]
+        else:
+            for j, o in enumerate(opts[:8]):
+                if not isinstance(o, dict):
+                    continue
+                label = str(o.get("label") or letters[j]).strip()
+                if len(label) != 1 or not label.isalpha():
+                    label = letters[j]
+                text = str(o.get("text") or o.get("option") or o.get("value") or "").strip()
+                fixed_opts.append({"label": label.upper()[:1], "text": text or f"Option {letters[j]}"})
+    item["options"] = fixed_opts
+    while len(item["options"]) < 4:
+        j = len(item["options"])
+        item["options"].append({"label": letters[j], "text": f"(Option {letters[j]})"})
+    if len(item["options"]) > 8:
+        item["options"] = item["options"][:8]
+
+    ca_raw = item.get("correct_answer")
+    if ca_raw is None or str(ca_raw).strip() == "":
+        ans = item.get("answer") or item.get("correct") or item.get("selected_answer") or ""
+        item["correct_answer"] = _answer_text_to_letter(str(ans), item["options"])
+    else:
+        ca_s = str(ca_raw).strip()
+        if len(ca_s) == 1 and ca_s.upper() in "ABCDEFGH":
+            item["correct_answer"] = ca_s.upper()
+        else:
+            item["correct_answer"] = _answer_text_to_letter(ca_s, item["options"])
+
+    item.setdefault("explanation", "Grounded in the course material for the cited week.")
+    sw = item.get("source_week")
+    if sw is None:
+        item["source_week"] = _infer_source_week_from_question_text(str(item.get("question", "")), fallback_week)
+    elif isinstance(sw, list) and sw:
+        item["source_week"] = int(sw[0]) if str(sw[0]).strip().isdigit() else fallback_week
+    elif isinstance(sw, str) and sw.strip().isdigit():
+        item["source_week"] = int(sw.strip())
+    elif isinstance(sw, int):
+        item["source_week"] = sw
+    else:
+        item["source_week"] = fallback_week
+    return item
+
+
+def _normalize_quiz_sa_item(raw_item: Any, idx: int, mc_count: int, fallback_week: int) -> dict[str, Any]:
+    if not isinstance(raw_item, dict):
+        return {
+            "question_number": mc_count + idx + 1,
+            "question": str(raw_item),
+            "model_answer": "See course materials.",
+            "grading_guidance": "Credit specific references to course concepts.",
+            "source_week": [fallback_week],
+        }
+    item = dict(raw_item)
+    if item.get("question_number") is None:
+        item["question_number"] = mc_count + idx + 1
+    item["question"] = str(item.get("question") or item.get("prompt") or "Short answer question.")
+    ma = item.get("model_answer") or item.get("answer") or item.get("sample_answer") or item.get("exemplar_answer")
+    item["model_answer"] = str(ma).strip() if ma is not None and str(ma).strip() else "See course materials."
+    item.setdefault("grading_guidance", "Credit answers that tie to the cited week(s).")
+    sw = item.get("source_week")
+    if isinstance(sw, int):
+        item["source_week"] = [sw]
+    elif isinstance(sw, str) and sw.strip().isdigit():
+        item["source_week"] = [int(sw.strip())]
+    elif isinstance(sw, list):
+        nums: list[int] = []
+        for x in sw:
+            if isinstance(x, int):
+                nums.append(x)
+            elif isinstance(x, str) and x.strip().isdigit():
+                nums.append(int(x.strip()))
+        item["source_week"] = nums if nums else [_infer_source_week_from_question_text(item["question"], fallback_week)]
+    else:
+        item["source_week"] = [_infer_source_week_from_question_text(item["question"], fallback_week)]
+    return item
+
+
+def _coerce_quiz_payload(parsed: Any, generated_weeks: list[GeneratedWeek]) -> dict[str, Any]:
+    """Map common alternate LLM shapes (string options, answer vs correct_answer) to GeneratedQuiz schema."""
+    if not isinstance(parsed, dict):
+        return {}
+    out = dict(parsed)
+    n_weeks = len(generated_weeks)
+
+    def week_for(i: int) -> int:
+        if n_weeks == 0:
+            return 1
+        return generated_weeks[i % n_weeks].week_number
+
+    mc_raw = out.get("multiple_choice")
+    if isinstance(mc_raw, list):
+        out["multiple_choice"] = [_normalize_quiz_mc_item(x, i, week_for(i)) for i, x in enumerate(mc_raw)]
+
+    mc_len = len(out["multiple_choice"]) if isinstance(out.get("multiple_choice"), list) else 0
+    sa_raw = out.get("short_answer")
+    if isinstance(sa_raw, list):
+        out["short_answer"] = [
+            _normalize_quiz_sa_item(x, i, mc_len, week_for(mc_len + i)) for i, x in enumerate(sa_raw)
+        ]
+
+    mc_list = out.get("multiple_choice")
+    sa_list = out.get("short_answer")
+    if isinstance(mc_list, list) and isinstance(sa_list, list):
+        out["total_questions"] = len(mc_list) + len(sa_list)
+    title = out.get("title")
+    out["title"] = str(title).strip() if title is not None else "Course quiz"
+    if not out["title"]:
+        out["title"] = "Course quiz"
+    return out
+
+
+def _build_quiz_strict_json_repair_prompt(topic: str, difficulty: str) -> str:
+    return (
+        "The previous quiz output was not valid JSON (common mistakes: single-quoted strings, "
+        "unescaped quotes inside values, trailing commas, or comments).\n"
+        "Respond with exactly one JSON object per RFC 8259: double quotes for every key and string value; "
+        "never wrap strings in single quotes; escape internal double quotes as backslash-doublequote; "
+        "no trailing commas; no markdown fences.\n"
+        f"Same assessment task: a comprehensive quiz for a {difficulty} course on {topic!r}. "
+        "Keys: title (string), total_questions (int), multiple_choice (array of full question objects), "
+        "short_answer (array of full question objects). Never use integers in place of those arrays."
+    )
 
 
 def _build_outline_system_prompt(num_weeks: int, difficulty: str) -> str:
@@ -258,6 +462,33 @@ class GenerateService:
             key_takeaways=_as_list_of_str(parsed.get("key_takeaways")),
         )
 
+    def _quiz_json_loads_with_one_repair(
+        self,
+        raw: str,
+        weeks_content: str,
+        topic: str,
+        difficulty: str,
+    ) -> dict[str, Any]:
+        current = raw
+        for json_attempt in range(2):
+            try:
+                parsed = json.loads(current)
+                return parsed
+            except json.JSONDecodeError:
+                if json_attempt == 1:
+                    raise
+                repair_messages = [
+                    {
+                        "role": "system",
+                        "content": _build_quiz_strict_json_repair_prompt(topic, difficulty),
+                    },
+                    {"role": "user", "content": weeks_content},
+                ]
+                current = self._llm_json_call(
+                    repair_messages, self._settings.openai_model, {"type": "json_object"}
+                )
+        raise RuntimeError("quiz JSON repair loop exhausted")
+
     def _generate_quiz(self, topic: str, difficulty: str, generated_weeks: list[GeneratedWeek]) -> GeneratedQuiz:
         weeks_block = []
         for week in generated_weeks:
@@ -266,25 +497,53 @@ class GenerateService:
                 f"Objectives: {week.learning_objectives}\n"
                 f"Summary: {week.narrative_summary}\n"
             )
+        weeks_content = "Course material:\n" + "\n".join(weeks_block)
         messages = [
             {
                 "role": "system",
                 "content": (
                     f"You are an assessment designer creating a comprehensive quiz for a {difficulty} "
                     f"university course on '{topic}'. Return JSON with keys title, total_questions, "
-                    "multiple_choice, short_answer."
+                    "multiple_choice, short_answer. "
+                    "multiple_choice and short_answer must each be an array of question objects — "
+                    "never use integers for those keys (do not send counts instead of questions). "
+                    "Strict JSON: double quotes for every key and string value; never wrap strings in single quotes."
                 ),
             },
-            {
-                "role": "user",
-                "content": "Course material:\n" + "\n".join(weeks_block),
-            },
+            {"role": "user", "content": weeks_content},
         ]
         raw = self._llm_json_call(messages, self._settings.openai_model, {"type": "json_object"})
-        parsed = json.loads(raw)
+        parsed = self._quiz_json_loads_with_one_repair(raw, weeks_content, topic, difficulty)
+        coerced = _coerce_quiz_payload(parsed, generated_weeks)
         try:
-            return GeneratedQuiz.model_validate(parsed)
+            return GeneratedQuiz.model_validate(coerced)
         except Exception:  # noqa: BLE001
+            retry_counts = _quiz_int_counts_for_retry(parsed) if isinstance(parsed, dict) else None
+            if retry_counts is not None:
+                mc_n, sa_n = retry_counts
+                retry_messages = [
+                    {
+                        "role": "system",
+                        "content": _build_quiz_retry_system_prompt(topic, difficulty, mc_n, sa_n),
+                    },
+                    {
+                        "role": "user",
+                        "content": "Course material:\n" + "\n".join(weeks_block),
+                    },
+                ]
+                try:
+                    raw_retry = self._llm_json_call(
+                        retry_messages, self._settings.openai_model, {"type": "json_object"}
+                    )
+                    parsed_retry = self._quiz_json_loads_with_one_repair(
+                        raw_retry, weeks_content, topic, difficulty
+                    )
+                    coerced_retry = _coerce_quiz_payload(parsed_retry, generated_weeks)
+                    quiz_retry = GeneratedQuiz.model_validate(coerced_retry)
+                    return quiz_retry
+                except Exception:  # noqa: BLE001
+                    pass
+
             mc_raw = parsed.get("multiple_choice") if isinstance(parsed, dict) else None
             sa_raw = parsed.get("short_answer") if isinstance(parsed, dict) else None
             mc_count = mc_raw if isinstance(mc_raw, int) else 0
