@@ -14,6 +14,7 @@ const INITIAL_GRAPH: GraphResponse = {
 const NODE_TYPE_ORDER: NodeType[] = ["guest", "topic", "content", "concept"];
 const MAX_RELATED_CONTENT_ITEMS = 5;
 const VIEWS = ["graph", "search", "generate", "about"] as const;
+const NAV_VIEWS = ["graph", "search", "generate"] as const;
 
 type View = (typeof VIEWS)[number];
 
@@ -227,7 +228,7 @@ export default function App(): JSX.Element {
     <main className="min-h-screen bg-[#fffaf3] text-slate-900">
       <nav className="fixed right-4 top-4 z-50">
         <div className="flex items-center gap-1 rounded-full border border-amber-200/80 bg-white/90 p-1 shadow-sm backdrop-blur">
-          {VIEWS.map((view) => {
+          {NAV_VIEWS.map((view) => {
             const isActive = activeView === view;
             return (
               <button
