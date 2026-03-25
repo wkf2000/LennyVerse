@@ -15,6 +15,16 @@ class Settings(BaseSettings):
     supabase_db_url: str | None = Field(default=None, alias="SUPABASE_DB_URL")
     cors_allow_origins_csv: str | None = Field(default=None, alias="CORS_ALLOW_ORIGINS")
 
+    openai_api_base: str | None = Field(default=None, alias="OPENAI_API_BASE")
+    openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
+    openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
+    openai_embedding_model: str = Field(default="text-embedding-3-small", alias="OPENAI_EMBEDDING_MODEL")
+
+    rag_default_k: int = Field(default=8, alias="RAG_DEFAULT_K")
+    rag_max_k: int = Field(default=32, alias="RAG_MAX_K")
+    rag_retrieval_timeout_seconds: int = Field(default=30, alias="RAG_RETRIEVAL_TIMEOUT_SECONDS")
+    rag_chat_timeout_seconds: int = Field(default=120, alias="RAG_CHAT_TIMEOUT_SECONDS")
+
     @computed_field
     @property
     def cors_allow_origins(self) -> list[str]:

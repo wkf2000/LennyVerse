@@ -1,17 +1,27 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend_api.config import Settings, get_settings
+from backend_api.llm_client import ChatCompletionStreamer, OpenAiCompatibleChatStreamer
 from backend_api.graph_repository import GraphRepository
 from backend_api.graph_service import GraphFilters, GraphService
+from backend_api.rag_repository import RagRepository
+from backend_api.rag_schemas import ChatRequest, SearchRequest, SearchResponse
+from backend_api.rag_service import (
+    RagFilterValidationError,
+    RagRetrievalTimeoutError,
+    RagService,
+    validate_rag_filters,
+)
 from backend_api.schemas import GraphResponse, NodeDetailResponse, NodeType
 
 app = FastAPI(title="LennyVerse API", version="0.2.0")
@@ -37,6 +47,29 @@ def get_graph_service(
     repository: Annotated[GraphRepository, Depends(get_graph_repository)],
 ) -> GraphService:
     return GraphService(repository)
+
+
+def get_rag_repository(
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> RagRepository:
+    return RagRepository(
+        app_settings.require_db_url(),
+        timeout_seconds=app_settings.rag_retrieval_timeout_seconds,
+    )
+
+
+def get_rag_service(
+    repository: Annotated[RagRepository, Depends(get_rag_repository)],
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> RagService:
+    return RagService(repository=repository, settings=app_settings)
+
+
+def get_llm_client(app_settings: Annotated[Settings, Depends(get_settings)]) -> ChatCompletionStreamer:
+    try:
+        return OpenAiCompatibleChatStreamer(app_settings)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.get("/health")
@@ -70,6 +103,50 @@ def get_graph_node(
     if not detail:
         raise HTTPException(status_code=404, detail=f"Node '{node_id}' not found.")
     return detail
+
+
+@app.post("/api/search", response_model=SearchResponse)
+def post_search(
+    body: SearchRequest,
+    service: Annotated[RagService, Depends(get_rag_service)],
+) -> SearchResponse:
+    try:
+        return service.search(body.query, k=body.k, filters=body.filters)
+    except RagFilterValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RagRetrievalTimeoutError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/api/chat")
+def post_chat(
+    body: ChatRequest,
+    service: Annotated[RagService, Depends(get_rag_service)],
+    app_settings: Annotated[Settings, Depends(get_settings)],
+    llm: Annotated[ChatCompletionStreamer, Depends(get_llm_client)],
+) -> StreamingResponse:
+    stripped = body.query.strip()
+    if not stripped:
+        raise HTTPException(
+            status_code=422,
+            detail="query must not be empty or whitespace only",
+        )
+    try:
+        validate_rag_filters(body.filters)
+    except RagFilterValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    normalized = body.model_copy(update={"query": stripped})
+
+    def event_stream() -> Iterator[str]:
+        yield from service.iter_chat_sse_lines(
+            normalized,
+            llm=llm,
+            chat_timeout_seconds=app_settings.rag_chat_timeout_seconds,
+            model=app_settings.openai_model,
+        )
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 _FRONTEND_DIST_DIR = Path(__file__).resolve().parents[3] / "frontend" / "dist"
