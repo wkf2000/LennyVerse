@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import sys
 from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
@@ -27,8 +29,29 @@ from backend_api.rag_service import (
 )
 from backend_api.schemas import GraphResponse, NodeDetailResponse, NodeType
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    stream=sys.stdout,
+)
+logger = logging.getLogger("lennyverse")
+
+logger.info("Starting LennyVerse API v0.2.0")
+
 app = FastAPI(title="LennyVerse API", version="0.2.0")
 settings = get_settings()
+
+logger.info("Configuration loaded")
+logger.info("  Database URL: %s", "configured" if settings.supabase_db_url else "NOT SET")
+logger.info("  OpenAI API base: %s", settings.openai_api_base or "not configured")
+logger.info("  OpenAI model: %s", settings.openai_model)
+logger.info("  Embedding model: %s", settings.embedding_model)
+logger.info("  Embedding base URL: %s", settings.ollama_embed_base_url)
+logger.info("  RAG default k: %d, max k: %d", settings.rag_default_k, settings.rag_max_k)
+logger.info("  RAG retrieval timeout: %ds, chat timeout: %ds",
+            settings.rag_retrieval_timeout_seconds, settings.rag_chat_timeout_seconds)
+logger.info("  Generate max weeks: %d, outline k: %d, timeout: %ds",
+            settings.generate_max_weeks, settings.generate_outline_k, settings.generate_timeout_seconds)
 
 if settings.cors_allow_origins:
     app.add_middleware(
@@ -38,6 +61,9 @@ if settings.cors_allow_origins:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    logger.info("CORS middleware enabled for origins: %s", settings.cors_allow_origins)
+else:
+    logger.info("CORS middleware not configured (no origins specified)")
 
 
 def get_graph_repository(
@@ -192,10 +218,14 @@ _FRONTEND_DIST_DIR = Path(__file__).resolve().parents[3] / "frontend" / "dist"
 _FRONTEND_INDEX_FILE = _FRONTEND_DIST_DIR / "index.html"
 _RESERVED_NON_SPA_PREFIXES = {"api", "docs", "redoc", "openapi.json", "health"}
 
+logger.info("Registered API routes: %s", [r.path for r in app.routes if hasattr(r, "path")])
+
 if _FRONTEND_DIST_DIR.exists() and _FRONTEND_INDEX_FILE.exists():
+    logger.info("Frontend dist found at %s — enabling SPA serving", _FRONTEND_DIST_DIR)
     assets_dir = _FRONTEND_DIST_DIR / "assets"
     if assets_dir.exists():
         app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+        logger.info("Mounted /assets static files directory")
 
     @app.get("/", include_in_schema=False)
     def serve_frontend_root() -> FileResponse:
@@ -211,3 +241,7 @@ if _FRONTEND_DIST_DIR.exists() and _FRONTEND_INDEX_FILE.exists():
             return FileResponse(requested_file)
 
         return FileResponse(_FRONTEND_INDEX_FILE)
+else:
+    logger.warning("Frontend dist not found at %s — SPA serving disabled", _FRONTEND_DIST_DIR)
+
+logger.info("LennyVerse API startup complete")
