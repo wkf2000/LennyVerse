@@ -124,7 +124,7 @@ export default function AnswerStreamPanel({
       <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Answer</h2>
       <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-2 text-sm leading-relaxed text-slate-800">
         {searchLoading ? (
-          <p className="text-slate-500">Searching Lenny&apos;s archive...</p>
+          <p className="text-slate-500">Exploring Lenny&apos;s archive...</p>
         ) : null}
 
         {!searchLoading && errorMessage && showDegradedChatError ? (

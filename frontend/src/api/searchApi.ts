@@ -34,7 +34,7 @@ export async function postSearch(request: SearchRequest): Promise<SearchResponse
     body: JSON.stringify(request),
   });
   if (!response.ok) {
-    throw new Error(`Search failed (${response.status})`);
+    throw new Error(`Exploration failed (${response.status})`);
   }
   return (await response.json()) as SearchResponse;
 }

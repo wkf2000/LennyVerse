@@ -14,20 +14,20 @@ const INITIAL_GRAPH: GraphResponse = {
 
 const NODE_TYPE_ORDER: NodeType[] = ["guest", "topic", "content", "concept"];
 const MAX_RELATED_CONTENT_ITEMS = 5;
-const VIEWS = ["graph", "search", "generate", "about"] as const;
-const NAV_VIEWS = ["graph", "search", "generate", "about"] as const;
+const VIEWS = ["graph", "explore", "generate", "about"] as const;
+const NAV_VIEWS = ["graph", "explore", "generate", "about"] as const;
 
 type View = (typeof VIEWS)[number];
 
 const VIEW_PATHS: Record<View, string> = {
   graph: "/",
-  search: "/search",
+  explore: "/explore",
   generate: "/generate",
   about: "/about",
 };
 const VIEW_LABELS: Record<View, string> = {
   graph: "visualization",
-  search: "search",
+  explore: "explore",
   generate: "generate",
   about: "about",
 };
@@ -390,15 +390,15 @@ export default function App(): JSX.Element {
             </aside>
           </section>
         </section>
-      ) : activeView === "search" ? (
+      ) : activeView === "explore" ? (
         <section className="mx-auto max-w-7xl px-4 pb-8 pt-24 sm:px-6 lg:px-8">
           <header className="mb-6">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-700">LennyVerse 🔎</p>
             <h1 className="mt-2 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
-              Search the archive with grounded answers
+              Explore the archive with grounded answers
             </h1>
             <p className="mt-3 max-w-3xl text-sm text-slate-600">
-              Ask one question to retrieve sources, stream a cited answer, and inspect excerpts side-by-side
+              Ask a question, discover sources, stream a cited answer, and inspect excerpts side-by-side
             </p>
           </header>
           <SearchWorkspace />

@@ -12,7 +12,7 @@ export default function SourcesList({ results, selectedId, citedIds, onSelect }:
     <section className="flex min-h-[220px] flex-col rounded-2xl border border-indigo-100 bg-white/95 p-4 shadow-sm shadow-indigo-100/70 lg:min-h-0 lg:max-h-[42vh]">
       <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Sources</h2>
       {results.length === 0 ? (
-        <p className="mt-4 text-sm text-slate-500">No sources yet. Results appear as soon as search returns.</p>
+        <p className="mt-4 text-sm text-slate-500">No sources yet. Results appear as soon as exploration begins.</p>
       ) : (
         <ul className="mt-3 flex flex-1 flex-col gap-2 overflow-y-auto pr-1">
           {results.map((result) => {

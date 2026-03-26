@@ -58,14 +58,14 @@ describe("SearchWorkspace", () => {
     });
 
     render(<SearchWorkspace />);
-    fireEvent.change(screen.getByLabelText("Search query"), { target: { value: "growth" } });
-    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    fireEvent.change(screen.getByLabelText("Explore query"), { target: { value: "growth" } });
+    fireEvent.click(screen.getByRole("button", { name: "Explore" }));
 
-    expect(screen.getByText("Searching Lenny's archive...")).toBeInTheDocument();
+    expect(screen.getByText("Exploring Lenny's archive...")).toBeInTheDocument();
 
     releaseSearch?.();
     await waitFor(() => {
-      expect(screen.queryByText("Searching Lenny's archive...")).not.toBeInTheDocument();
+      expect(screen.queryByText("Exploring Lenny's archive...")).not.toBeInTheDocument();
     });
   });
 
@@ -88,8 +88,8 @@ describe("SearchWorkspace", () => {
     });
 
     render(<SearchWorkspace />);
-    fireEvent.change(screen.getByLabelText("Search query"), { target: { value: "growth" } });
-    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    fireEvent.change(screen.getByLabelText("Explore query"), { target: { value: "growth" } });
+    fireEvent.click(screen.getByRole("button", { name: "Explore" }));
 
     await waitFor(() => {
       expect(screen.getByText("Thinking with sources...")).toBeInTheDocument();
@@ -122,8 +122,8 @@ describe("SearchWorkspace", () => {
 
     render(<SearchWorkspace />);
 
-    fireEvent.change(screen.getByLabelText("Search query"), { target: { value: "growth" } });
-    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    fireEvent.change(screen.getByLabelText("Explore query"), { target: { value: "growth" } });
+    fireEvent.click(screen.getByRole("button", { name: "Explore" }));
 
     await waitFor(() => {
       expect(screen.getByText("Source Alpha")).toBeInTheDocument();
@@ -132,7 +132,7 @@ describe("SearchWorkspace", () => {
 
     releaseStream?.();
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Search" })).not.toBeDisabled();
+      expect(screen.getByRole("button", { name: "Explore" })).not.toBeDisabled();
     });
     expect(streamChat).toHaveBeenCalledTimes(1);
   });
@@ -154,8 +154,8 @@ describe("SearchWorkspace", () => {
     });
 
     render(<SearchWorkspace />);
-    fireEvent.change(screen.getByLabelText("Search query"), { target: { value: "q" } });
-    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    fireEvent.change(screen.getByLabelText("Explore query"), { target: { value: "q" } });
+    fireEvent.click(screen.getByRole("button", { name: "Explore" }));
 
     await waitFor(() => {
       expect(screen.getByTestId("source-row-chunk-detail")).toBeInTheDocument();
@@ -177,8 +177,8 @@ describe("SearchWorkspace", () => {
     });
 
     render(<SearchWorkspace />);
-    fireEvent.change(screen.getByLabelText("Search query"), { target: { value: "growth" } });
-    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    fireEvent.change(screen.getByLabelText("Explore query"), { target: { value: "growth" } });
+    fireEvent.click(screen.getByRole("button", { name: "Explore" }));
 
     await waitFor(() => {
       expect(screen.getByTestId("chat-partial-failure-banner")).toBeInTheDocument();
@@ -237,8 +237,8 @@ describe("SearchWorkspace", () => {
     });
 
     render(<SearchWorkspace />);
-    fireEvent.change(screen.getByLabelText("Search query"), { target: { value: "q" } });
-    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    fireEvent.change(screen.getByLabelText("Explore query"), { target: { value: "q" } });
+    fireEvent.click(screen.getByRole("button", { name: "Explore" }));
 
     await waitFor(() => {
       expect(screen.getByText("Cited")).toBeInTheDocument();
@@ -261,8 +261,8 @@ describe("SearchWorkspace", () => {
     });
 
     render(<SearchWorkspace />);
-    fireEvent.change(screen.getByLabelText("Search query"), { target: { value: "q" } });
-    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    fireEvent.change(screen.getByLabelText("Explore query"), { target: { value: "q" } });
+    fireEvent.click(screen.getByRole("button", { name: "Explore" }));
 
     await waitFor(() => {
       expect(

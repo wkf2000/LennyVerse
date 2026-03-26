@@ -35,14 +35,14 @@ export default function SearchInput({
             onChange={(event) => onChange(event.target.value)}
             disabled={disabled}
             placeholder={placeholder}
-            aria-label="Search query"
+            aria-label="Explore query"
           />
           <button
             type="submit"
             disabled={disabled || !value.trim()}
             className="shrink-0 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-indigo-50 shadow-sm shadow-indigo-300/40 transition-all duration-200 hover:bg-indigo-500 motion-safe:hover:-translate-y-0.5 hover:shadow-md hover:shadow-indigo-300/50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
           >
-            Search
+            Explore
           </button>
         </div>
       </label>

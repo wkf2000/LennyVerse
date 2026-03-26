@@ -125,7 +125,7 @@ export default function SearchWorkspace({
         setResults(searchPayload.results);
       } catch (error: unknown) {
         setIsSearching(false);
-        setErrorMessage(error instanceof Error ? error.message : "Search failed.");
+        setErrorMessage(error instanceof Error ? error.message : "Exploration failed.");
         return;
       }
 

@@ -26,19 +26,19 @@ describe("App URL view sync", () => {
     window.history.pushState({}, "", "/");
   });
 
-  it("initial /search path selects search view", () => {
-    window.history.pushState({}, "", "/search");
+  it("initial /explore path selects explore view", () => {
+    window.history.pushState({}, "", "/explore");
     render(<App />);
     expect(
-      screen.getByRole("heading", { name: /Search the archive with grounded answers/i }),
+      screen.getByRole("heading", { name: /Explore the archive with grounded answers/i }),
     ).toBeInTheDocument();
   });
 
-  it("switching to search updates URL path to /search", () => {
+  it("switching to explore updates URL path to /explore", () => {
     render(<App />);
     const nav = screen.getByRole("navigation");
-    fireEvent.click(within(nav).getByRole("button", { name: /^search$/ }));
-    expect(window.location.pathname).toBe("/search");
+    fireEvent.click(within(nav).getByRole("button", { name: /^explore$/ }));
+    expect(window.location.pathname).toBe("/explore");
   });
 
   it("initial /about path shows About page heading", () => {

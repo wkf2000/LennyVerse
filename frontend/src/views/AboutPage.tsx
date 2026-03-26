@@ -35,7 +35,7 @@ export default function AboutPage(): JSX.Element {
               content and how they connect across hundreds of posts and podcast episodes.
             </li>
             <li>
-              <strong className="font-medium text-slate-800">Grounded search</strong> — Ask a question and get an
+              <strong className="font-medium text-slate-800">Grounded explore</strong> — Ask a question and get an
               answer backed by retrieved excerpts you can inspect.
             </li>
             <li>

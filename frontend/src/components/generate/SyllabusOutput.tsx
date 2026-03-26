@@ -13,7 +13,7 @@ function renderTextWithCitations(text: string): JSX.Element {
         part.startsWith("[cite:") ? (
           <a
             key={`${part}-${index}`}
-            href={`/search?q=${encodeURIComponent(part)}`}
+            href={`/explore?q=${encodeURIComponent(part)}`}
             className="ml-1 inline-flex rounded bg-amber-100 px-1 py-0.5 text-[11px] font-medium text-amber-900 hover:bg-amber-200"
             title="View source context"
           >
