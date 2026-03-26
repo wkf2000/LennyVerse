@@ -9,7 +9,7 @@ export interface SourcesListProps {
 
 export default function SourcesList({ results, selectedId, citedIds, onSelect }: SourcesListProps): JSX.Element {
   return (
-    <section className="flex min-h-[220px] flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:min-h-0 lg:max-h-[42vh]">
+    <section className="flex min-h-[220px] flex-col rounded-2xl border border-indigo-100 bg-white/95 p-4 shadow-sm shadow-indigo-100/70 lg:min-h-0 lg:max-h-[42vh]">
       <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Sources</h2>
       {results.length === 0 ? (
         <p className="mt-4 text-sm text-slate-500">No sources yet. Results appear as soon as search returns.</p>
@@ -24,18 +24,18 @@ export default function SourcesList({ results, selectedId, citedIds, onSelect }:
                   type="button"
                   data-testid={`source-row-${result.id}`}
                   onClick={() => onSelect(result.id)}
-                  className={`w-full rounded-xl border p-3 text-left text-sm transition-colors motion-reduce:transition-none ${
+                  className={`w-full rounded-xl border p-3 text-left text-sm transition-all duration-200 motion-reduce:transition-none motion-safe:hover:-translate-y-0.5 ${
                     selected
-                      ? "border-amber-400 bg-amber-50 ring-1 ring-amber-300"
+                      ? "border-indigo-300 bg-indigo-50 ring-1 ring-indigo-200 shadow-sm shadow-indigo-200/60"
                       : cited
-                        ? "border-amber-200/80 bg-amber-50/50 hover:border-amber-300"
-                        : "border-slate-200 bg-slate-50/80 hover:border-amber-200 hover:bg-white"
+                        ? "border-indigo-200/80 bg-indigo-50/50 hover:border-indigo-300 hover:shadow-sm hover:shadow-indigo-200/50"
+                        : "border-slate-200 bg-slate-50/80 hover:border-indigo-200 hover:bg-white hover:shadow-sm hover:shadow-indigo-200/50"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <span className="font-medium text-slate-900">{result.title}</span>
                     {cited ? (
-                      <span className="shrink-0 rounded bg-amber-200/80 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-900">
+                      <span className="shrink-0 rounded bg-indigo-200/80 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-indigo-900">
                         Cited
                       </span>
                     ) : null}

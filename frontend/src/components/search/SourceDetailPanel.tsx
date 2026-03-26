@@ -24,7 +24,7 @@ function HighlightedExcerpt({
     <p className="text-sm leading-relaxed text-slate-800" data-testid="source-detail-excerpt">
       {before}
       {mid ? (
-        <mark className="rounded bg-amber-200 px-0.5 text-slate-900" data-testid="citation-marker">
+        <mark className="rounded bg-indigo-200 px-0.5 text-slate-900" data-testid="citation-marker">
           {mid}
         </mark>
       ) : null}
@@ -36,7 +36,7 @@ function HighlightedExcerpt({
 export default function SourceDetailPanel({ result, highlightSpan }: SourceDetailPanelProps): JSX.Element {
   if (!result) {
     return (
-      <section className="flex min-h-[220px] flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:min-h-0 lg:max-h-[42vh]">
+      <section className="flex min-h-[220px] flex-col rounded-2xl border border-indigo-100 bg-white/95 p-4 shadow-sm shadow-indigo-100/70 lg:min-h-0 lg:max-h-[42vh]">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Source detail</h2>
         <div className="mt-6 grid flex-1 place-items-center text-center text-sm text-slate-500">
           Select a source row to read the full excerpt and metadata.
@@ -51,7 +51,7 @@ export default function SourceDetailPanel({ result, highlightSpan }: SourceDetai
     highlightSpan.end > highlightSpan.start;
 
   return (
-    <section className="flex min-h-[220px] flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:min-h-0 lg:max-h-[42vh]">
+    <section className="flex min-h-[220px] flex-col rounded-2xl border border-indigo-100 bg-white/95 p-4 shadow-sm shadow-indigo-100/70 lg:min-h-0 lg:max-h-[42vh]">
       <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Source detail</h2>
       <div className="mt-3 flex-1 overflow-y-auto">
         <h3 className="text-lg font-semibold text-slate-900">{result.title}</h3>

@@ -14,5 +14,15 @@
       BlinkMacSystemFont,
       "Segoe UI",
       sans-serif;
+    background:
+      radial-gradient(1200px 700px at -10% -10%, rgba(129, 140, 248, 0.2), transparent 60%),
+      radial-gradient(1000px 640px at 110% 0%, rgba(110, 231, 183, 0.16), transparent 62%),
+      #f4f7ff;
+    color: #0f172a;
   }
+}
+
+::selection {
+  background-color: rgba(99, 102, 241, 0.22);
+  color: #1f2937;
 }

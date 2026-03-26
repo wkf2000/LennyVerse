@@ -21,7 +21,7 @@ export default function GenerateInputForm({ disabled, onSubmit }: GenerateInputF
   }
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-6">
+    <section className="rounded-2xl border border-indigo-100 bg-white/95 p-6 shadow-sm shadow-indigo-100/70">
       <h2 className="text-xl font-semibold text-slate-900">Create a syllabus</h2>
       <p className="mt-2 text-sm text-slate-600">
         Provide a topic, course length, and difficulty level. The agent will propose an outline for review.
@@ -35,7 +35,7 @@ export default function GenerateInputForm({ disabled, onSubmit }: GenerateInputF
             onChange={(event) => setTopic(event.target.value)}
             disabled={disabled}
             placeholder="e.g. Product-Led Growth"
-            className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition-colors duration-200 focus:border-amber-400 focus:bg-white motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-70"
+            className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition-colors duration-200 focus:border-indigo-400 focus:bg-white motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-70"
           />
         </label>
 
@@ -48,7 +48,7 @@ export default function GenerateInputForm({ disabled, onSubmit }: GenerateInputF
             value={numWeeks}
             onChange={(event) => setNumWeeks(Math.min(16, Math.max(2, Number(event.target.value) || 8)))}
             disabled={disabled}
-            className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition-colors duration-200 focus:border-amber-400 focus:bg-white motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-70"
+            className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition-colors duration-200 focus:border-indigo-400 focus:bg-white motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-70"
           />
         </label>
 
@@ -58,7 +58,7 @@ export default function GenerateInputForm({ disabled, onSubmit }: GenerateInputF
             value={difficulty}
             onChange={(event) => setDifficulty(event.target.value as DifficultyLevel)}
             disabled={disabled}
-            className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition-colors duration-200 focus:border-amber-400 focus:bg-white motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-70"
+            className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition-colors duration-200 focus:border-indigo-400 focus:bg-white motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-70"
           >
             <option value="intro">Intro</option>
             <option value="intermediate">Intermediate</option>
@@ -72,7 +72,7 @@ export default function GenerateInputForm({ disabled, onSubmit }: GenerateInputF
           type="button"
           disabled={disabled || !topic.trim()}
           onClick={handleSubmit}
-          className="cursor-pointer rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-amber-100 transition-colors duration-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="cursor-pointer rounded-full bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-indigo-50 shadow-sm shadow-indigo-300/40 transition-all duration-200 hover:bg-indigo-500 motion-safe:hover:-translate-y-0.5 hover:shadow-md hover:shadow-indigo-300/50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
         >
           Generate outline
         </button>

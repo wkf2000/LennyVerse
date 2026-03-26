@@ -27,8 +27,8 @@ function statusClasses(status: StepLogPayload["status"]): string {
 
 export default function GenerationProgress({ active, steps }: GenerationProgressProps): JSX.Element {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-6">
-      <h2 className="text-xl font-semibold text-slate-900">Generation Progress</h2>
+    <section className="rounded-2xl border border-indigo-100 bg-white/95 p-6 shadow-sm shadow-indigo-100/70">
+      <h2 className="text-xl font-semibold text-slate-900">Generation Progress ⚙️</h2>
       <p className="mt-2 text-sm text-slate-600">
         {active ? "The agent is generating your syllabus and quiz." : "Generation finished."}
       </p>
@@ -44,7 +44,7 @@ export default function GenerationProgress({ active, steps }: GenerationProgress
               </span>
               <div>
                 <p>
-                  <span className="text-amber-200">{step.node}</span> - {step.message}
+                  <span className="text-indigo-200">{step.node}</span> - {step.message}
                 </p>
                 {typeof step.week === "number" ? <p className="text-slate-400">week {step.week}</p> : null}
               </div>

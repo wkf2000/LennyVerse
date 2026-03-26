@@ -2,20 +2,20 @@ export default function AboutPage(): JSX.Element {
   return (
     <section className="mx-auto max-w-7xl px-4 pb-8 pt-24 sm:px-6 lg:px-8">
       <header className="mb-10">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">LennyVerse</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-700">LennyVerse 💡</p>
         <h1 className="mt-2 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
-          A teaching assistant built on Lenny Rachitsky&apos;s archive.
+          A teaching assistant built on Lenny Rachitsky&apos;s archive
         </h1>
         <p className="mt-3 max-w-3xl text-sm text-slate-600">
           Explore the corpus visually, ask grounded questions with citations, and generate syllabus and quiz drafts
-          that trace back to real episodes and newsletters.
+          that trace back to real episodes and newsletters
         </p>
       </header>
 
-      <div className="max-w-3xl space-y-10 text-sm leading-6 text-slate-700">
-        <section aria-labelledby="about-audience">
+      <div className="max-w-3xl space-y-6 text-sm leading-6 text-slate-700">
+        <section aria-labelledby="about-audience" className="rounded-2xl border border-indigo-100 bg-white/90 p-5 shadow-sm">
           <h2 id="about-audience" className="text-lg font-semibold tracking-tight text-slate-900">
-            Who it&apos;s for
+            Who it&apos;s for 🎯
           </h2>
           <p className="mt-2">
             College instructors teaching product management, entrepreneurship, growth, and leadership—especially
@@ -25,9 +25,9 @@ export default function AboutPage(): JSX.Element {
           </p>
         </section>
 
-        <section aria-labelledby="about-capabilities">
+        <section aria-labelledby="about-capabilities" className="rounded-2xl border border-indigo-100 bg-white/90 p-5 shadow-sm">
           <h2 id="about-capabilities" className="text-lg font-semibold tracking-tight text-slate-900">
-            What you can do here
+            What you can do here ✨
           </h2>
           <ul className="mt-3 list-inside list-disc space-y-2">
             <li>
@@ -46,9 +46,9 @@ export default function AboutPage(): JSX.Element {
           </ul>
         </section>
 
-        <section aria-labelledby="about-corpus">
+        <section aria-labelledby="about-corpus" className="rounded-2xl border border-indigo-100 bg-white/90 p-5 shadow-sm">
           <h2 id="about-corpus" className="text-lg font-semibold tracking-tight text-slate-900">
-            Corpus and attribution
+            Corpus and attribution 📚
           </h2>
           <p className="mt-2">
             The underlying library is a curated set of roughly six hundred thirty-eight newsletters and podcast
@@ -59,9 +59,9 @@ export default function AboutPage(): JSX.Element {
           </p>
         </section>
 
-        <section aria-labelledby="about-ethics">
+        <section aria-labelledby="about-ethics" className="rounded-2xl border border-indigo-100 bg-white/90 p-5 shadow-sm">
           <h2 id="about-ethics" className="text-lg font-semibold tracking-tight text-slate-900">
-            Ethics and mission
+            Ethics and mission 🌱
           </h2>
           <p className="mt-2">
             The product is designed so AI <strong className="font-medium text-slate-800">augments educators</strong>,
@@ -72,9 +72,9 @@ export default function AboutPage(): JSX.Element {
           </p>
         </section>
 
-        <section aria-labelledby="about-tech">
+        <section aria-labelledby="about-tech" className="rounded-2xl border border-indigo-100 bg-white/90 p-5 shadow-sm">
           <h2 id="about-tech" className="text-lg font-semibold tracking-tight text-slate-900">
-            How it&apos;s built
+            How it&apos;s built 🛠️
           </h2>
           <p className="mt-2">
             A Vite and React frontend talks to a FastAPI backend. Content and vectors live in Postgres via Supabase

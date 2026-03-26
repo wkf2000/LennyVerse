@@ -115,7 +115,7 @@ export default function GenerateWorkspace(): JSX.Element {
             <button
               type="button"
               onClick={handleReset}
-              className="cursor-pointer rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 transition-colors duration-200 hover:bg-slate-50"
+              className="cursor-pointer rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 transition-all duration-200 motion-safe:hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-sm"
             >
               Start over
             </button>

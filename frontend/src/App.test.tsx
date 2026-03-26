@@ -47,7 +47,7 @@ describe("App URL view sync", () => {
     expect(
       screen.getByRole("heading", {
         level: 1,
-        name: /A teaching assistant built on Lenny Rachitsky's archive\./i,
+        name: /A teaching assistant built on Lenny Rachitsky's archive/i,
       }),
     ).toBeInTheDocument();
   });

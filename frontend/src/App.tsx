@@ -25,6 +25,12 @@ const VIEW_PATHS: Record<View, string> = {
   generate: "/generate",
   about: "/about",
 };
+const VIEW_LABELS: Record<View, string> = {
+  graph: "graph",
+  search: "search",
+  generate: "generate",
+  about: "about",
+};
 
 function normalizePathname(pathname: string): string {
   if (pathname.length > 1 && pathname.endsWith("/")) {
@@ -187,9 +193,13 @@ export default function App(): JSX.Element {
   }
 
   return (
-    <main className="min-h-screen bg-[#fffaf3] text-slate-900">
+    <main className="relative min-h-screen overflow-hidden bg-[#f4f7ff] text-slate-900">
+      <div className="pointer-events-none absolute -left-24 top-20 h-64 w-64 rounded-full bg-indigo-200/50 blur-3xl motion-safe:animate-pulse" />
+      <div className="pointer-events-none absolute -right-20 top-64 h-72 w-72 rounded-full bg-emerald-200/50 blur-3xl motion-safe:animate-pulse" />
+      <div className="pointer-events-none absolute bottom-12 left-1/3 h-56 w-56 rounded-full bg-sky-200/40 blur-3xl motion-safe:animate-pulse" />
+
       <nav className="fixed right-4 top-4 z-50">
-        <div className="flex items-center gap-1 rounded-full border border-amber-200/80 bg-white/90 p-1 shadow-sm backdrop-blur">
+        <div className="flex items-center gap-1 rounded-full border border-indigo-200/80 bg-white/90 p-1 shadow-md shadow-indigo-100/70 backdrop-blur">
           {NAV_VIEWS.map((view) => {
             const isActive = activeView === view;
             return (
@@ -197,12 +207,14 @@ export default function App(): JSX.Element {
                 key={view}
                 type="button"
                 aria-current={isActive ? "page" : undefined}
-                className={`cursor-pointer rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-wide transition-colors duration-200 motion-reduce:transition-none ${
-                  isActive ? "bg-slate-900 text-amber-100" : "text-slate-600 hover:bg-amber-50 hover:text-slate-900"
+                className={`cursor-pointer rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-wide transition-all duration-200 motion-reduce:transition-none motion-safe:hover:-translate-y-0.5 ${
+                  isActive
+                    ? "bg-slate-900 text-indigo-50 shadow-sm shadow-indigo-300/40"
+                    : "text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 hover:shadow-sm hover:shadow-indigo-200/60"
                 }`}
                 onClick={() => goToView(view)}
               >
-                {view}
+                {VIEW_LABELS[view]}
               </button>
             );
           })}
@@ -213,27 +225,27 @@ export default function App(): JSX.Element {
         <section className="mx-auto max-w-7xl px-4 pb-8 pt-24 sm:px-6 lg:px-8">
           <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">LennyVerse</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-700">LennyVerse ✨</p>
               <h1 className="mt-2 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
-                One knowledge graph for modern teaching.
+                One knowledge graph for modern teaching
               </h1>
               <p className="mt-3 max-w-3xl text-sm text-slate-600">
-                Explore 638 podcasts and newsletters with a graph-first view built for clarity, discovery, and course design.
+                Explore 638 podcasts and newsletters with a graph-first view built for clarity, discovery, and course design
               </p>
             </div>
-            <div className="flex gap-5 rounded-full border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-slate-700">
+            <div className="flex gap-5 rounded-full border border-indigo-200 bg-indigo-50/90 px-4 py-2 text-sm text-slate-700 shadow-sm shadow-indigo-100">
               <span>{graphStats.nodes} nodes</span>
               <span>{graphStats.edges} edges</span>
             </div>
           </header>
 
-          <section className="mb-4 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 md:grid-cols-6">
+          <section className="mb-4 grid gap-3 rounded-2xl border border-indigo-100 bg-white/90 p-4 shadow-sm shadow-indigo-100/70 backdrop-blur md:grid-cols-6">
             <label className="md:col-span-2">
               <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Search nodes
               </span>
               <input
-                className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition-colors duration-200 focus:border-amber-400 focus:bg-white motion-reduce:transition-none"
+                className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition-colors duration-200 focus:border-indigo-400 focus:bg-white motion-reduce:transition-none"
                 placeholder="Type a guest, topic, or title..."
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
@@ -245,7 +257,7 @@ export default function App(): JSX.Element {
                 Topic filter
               </span>
               <input
-                className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition-colors duration-200 focus:border-amber-400 focus:bg-white motion-reduce:transition-none"
+                className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition-colors duration-200 focus:border-indigo-400 focus:bg-white motion-reduce:transition-none"
                 placeholder="growth"
                 value={topicFilter}
                 onChange={(event) => setTopicFilter(event.target.value)}
@@ -258,7 +270,7 @@ export default function App(): JSX.Element {
               </span>
               <input
                 type="date"
-                className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition-colors duration-200 focus:border-amber-400 focus:bg-white motion-reduce:transition-none"
+                className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition-colors duration-200 focus:border-indigo-400 focus:bg-white motion-reduce:transition-none"
                 value={startDate}
                 onChange={(event) => setStartDate(event.target.value)}
               />
@@ -270,7 +282,7 @@ export default function App(): JSX.Element {
               </span>
               <input
                 type="date"
-                className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition-colors duration-200 focus:border-amber-400 focus:bg-white motion-reduce:transition-none"
+                className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition-colors duration-200 focus:border-indigo-400 focus:bg-white motion-reduce:transition-none"
                 value={endDate}
                 onChange={(event) => setEndDate(event.target.value)}
               />
@@ -285,10 +297,10 @@ export default function App(): JSX.Element {
                   <button
                     key={type}
                     type="button"
-                    className={`cursor-pointer rounded-full border px-2.5 py-1 text-xs font-medium capitalize transition-colors duration-200 motion-reduce:transition-none ${
+                    className={`cursor-pointer rounded-full border px-2.5 py-1 text-xs font-medium capitalize transition-all duration-200 motion-reduce:transition-none motion-safe:hover:-translate-y-0.5 ${
                       nodeTypes.includes(type)
-                        ? "border-amber-400 bg-amber-100 text-amber-900"
-                        : "border-slate-300 text-slate-600 hover:border-amber-300 hover:bg-amber-50"
+                        ? "border-indigo-300 bg-indigo-100 text-indigo-900"
+                        : "border-slate-300 text-slate-600 hover:border-indigo-200 hover:bg-indigo-50 hover:shadow-sm hover:shadow-indigo-200/50"
                     }`}
                     onClick={() => toggleNodeType(type)}
                   >
@@ -318,19 +330,19 @@ export default function App(): JSX.Element {
                 onNodeSelect={setSelectedNodeId}
               />
               <div
-                className={`pointer-events-none absolute left-4 top-4 max-w-lg rounded-2xl border border-amber-200/30 bg-slate-900/75 p-4 text-amber-50 backdrop-blur transition-opacity duration-500 motion-reduce:transition-none ${
+                className={`pointer-events-none absolute left-4 top-4 max-w-lg rounded-2xl border border-indigo-200/30 bg-indigo-950/70 p-4 text-indigo-50 backdrop-blur transition-opacity duration-500 motion-reduce:transition-none ${
                   showHeroCopy ? "opacity-100" : "opacity-0"
                 }`}
               >
-                <p className="text-xs uppercase tracking-[0.2em] text-amber-200/90">Data Visualization Hero</p>
-                <h2 className="mt-2 text-2xl font-semibold tracking-tight">Lenny&apos;s intellectual universe.</h2>
-                <p className="mt-2 text-sm text-amber-50/80">
-                  638 episodes and posts. One knowledge graph. Your next syllabus.
+                <p className="text-xs uppercase tracking-[0.2em] text-indigo-200/90">Data Visualization Hero</p>
+                <h2 className="mt-2 text-2xl font-semibold tracking-tight">Lenny&apos;s intellectual universe</h2>
+                <p className="mt-2 text-sm text-indigo-50/80">
+                  638 episodes and posts, one knowledge graph, your next syllabus 🌿
                 </p>
               </div>
             </div>
 
-            <aside className="h-full rounded-xl border border-slate-200 bg-white p-4">
+            <aside className="h-full rounded-xl border border-indigo-100 bg-white/95 p-4 shadow-sm shadow-indigo-100/70">
               {!selectedNodeId ? (
                 <div className="grid h-full place-items-center text-center text-sm text-slate-500">
                   Click a node to inspect details and related content.
@@ -381,12 +393,12 @@ export default function App(): JSX.Element {
       ) : activeView === "search" ? (
         <section className="mx-auto max-w-7xl px-4 pb-8 pt-24 sm:px-6 lg:px-8">
           <header className="mb-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">LennyVerse</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-700">LennyVerse 🔎</p>
             <h1 className="mt-2 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
-              Search the archive with grounded answers.
+              Search the archive with grounded answers
             </h1>
             <p className="mt-3 max-w-3xl text-sm text-slate-600">
-              Ask one question to retrieve sources, stream a cited answer, and inspect excerpts side-by-side.
+              Ask one question to retrieve sources, stream a cited answer, and inspect excerpts side-by-side
             </p>
           </header>
           <SearchWorkspace />
@@ -394,13 +406,13 @@ export default function App(): JSX.Element {
       ) : activeView === "generate" ? (
         <section className="mx-auto max-w-7xl px-4 pb-8 pt-24 sm:px-6 lg:px-8">
           <header className="mb-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">LennyVerse</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-700">LennyVerse 🧠</p>
             <h1 className="mt-2 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
-              Build a syllabus and quiz from the archive.
+              Build a syllabus and quiz from the archive
             </h1>
             <p className="mt-3 max-w-3xl text-sm text-slate-600">
               Generate a course outline first, review it, then run full syllabus and assessment generation with
-              transparent step logs and grounded sources.
+              transparent step logs and grounded sources
             </p>
           </header>
           <GenerateWorkspace />

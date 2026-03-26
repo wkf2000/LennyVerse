@@ -30,7 +30,7 @@ export default function SearchInput({
         </span>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
           <input
-            className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition-colors duration-200 focus:border-amber-400 focus:bg-white motion-reduce:transition-none disabled:opacity-60"
+            className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition-colors duration-200 focus:border-indigo-400 focus:bg-white motion-reduce:transition-none disabled:opacity-60"
             value={value}
             onChange={(event) => onChange(event.target.value)}
             disabled={disabled}
@@ -40,7 +40,7 @@ export default function SearchInput({
           <button
             type="submit"
             disabled={disabled || !value.trim()}
-            className="shrink-0 rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-amber-100 transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            className="shrink-0 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-indigo-50 shadow-sm shadow-indigo-300/40 transition-all duration-200 hover:bg-indigo-500 motion-safe:hover:-translate-y-0.5 hover:shadow-md hover:shadow-indigo-300/50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
           >
             Search
           </button>
