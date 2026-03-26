@@ -9,7 +9,7 @@ interface GenerateInputFormProps {
 
 export default function GenerateInputForm({ disabled, onSubmit }: GenerateInputFormProps): JSX.Element {
   const [topic, setTopic] = useState("");
-  const [numWeeks, setNumWeeks] = useState(8);
+  const [numWeeks, setNumWeeks] = useState(2);
   const [difficulty, setDifficulty] = useState<DifficultyLevel>("intermediate");
 
   function handleSubmit(): void {
