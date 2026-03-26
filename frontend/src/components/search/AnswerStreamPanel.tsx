@@ -11,6 +11,9 @@ export interface AnswerStreamPanelProps {
   onSuggestedQueryClick: (query: string) => void;
 }
 
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
 export default function AnswerStreamPanel({
   searchLoading,
   streamActive,
@@ -32,10 +35,94 @@ export default function AnswerStreamPanel({
     !insufficientEvidence &&
     !trimmedAnswer;
 
+  const markdownComponents: Parameters<typeof ReactMarkdown>[0]["components"] = {
+    h1: ({ children, ...props }) => (
+      <h3 className="mt-4 text-lg font-semibold tracking-tight text-slate-950" {...props}>
+        {children}
+      </h3>
+    ),
+    h2: ({ children, ...props }) => (
+      <h4 className="mt-4 text-base font-semibold tracking-tight text-slate-950" {...props}>
+        {children}
+      </h4>
+    ),
+    h3: ({ children, ...props }) => (
+      <h5 className="mt-4 text-sm font-semibold tracking-tight text-slate-950" {...props}>
+        {children}
+      </h5>
+    ),
+    p: ({ children, ...props }) => (
+      <p className="mt-3 whitespace-pre-wrap text-slate-800 first:mt-0" {...props}>
+        {children}
+      </p>
+    ),
+    a: ({ children, href, ...props }) => (
+      <a
+        className="font-medium text-indigo-700 underline decoration-indigo-200 underline-offset-2 transition-colors hover:text-indigo-900 hover:decoration-indigo-300"
+        href={href}
+        target="_blank"
+        rel="noreferrer noopener"
+        {...props}
+      >
+        {children}
+      </a>
+    ),
+    ul: ({ children, ...props }) => (
+      <ul className="mt-3 list-disc space-y-1 pl-5 text-slate-800 first:mt-0" {...props}>
+        {children}
+      </ul>
+    ),
+    ol: ({ children, ...props }) => (
+      <ol className="mt-3 list-decimal space-y-1 pl-5 text-slate-800 first:mt-0" {...props}>
+        {children}
+      </ol>
+    ),
+    li: ({ children, ...props }) => (
+      <li className="pl-1" {...props}>
+        {children}
+      </li>
+    ),
+    blockquote: ({ children, ...props }) => (
+      <blockquote className="mt-3 border-l-2 border-indigo-200 pl-3 text-slate-700 first:mt-0" {...props}>
+        {children}
+      </blockquote>
+    ),
+    hr: (props) => <hr className="my-4 border-slate-200" {...props} />,
+    code: ({ children, className, ...props }) => {
+      const isBlock = typeof className === "string" && className.includes("language-");
+      if (isBlock) {
+        return (
+          <code className={className} {...props}>
+            {children}
+          </code>
+        );
+      }
+      return (
+        <code
+          className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[0.92em] text-slate-900"
+          {...props}
+        >
+          {children}
+        </code>
+      );
+    },
+    pre: ({ children, ...props }) => (
+      <pre
+        className="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-900 first:mt-0"
+        {...props}
+      >
+        {children}
+      </pre>
+    ),
+  };
+
   return (
-    <section className="rounded-2xl border border-indigo-100 bg-white/95 p-4 shadow-sm shadow-indigo-100/70" aria-live="polite">
+    <section
+      className="flex h-[min(38vh,420px)] flex-col overflow-hidden rounded-2xl border border-indigo-100 bg-white/95 p-4 shadow-sm shadow-indigo-100/70"
+      aria-live="polite"
+    >
       <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Answer</h2>
-      <div className="mt-3 min-h-[120px] text-sm leading-relaxed text-slate-800">
+      <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-2 text-sm leading-relaxed text-slate-800">
         {searchLoading ? (
           <p className="text-slate-500">Searching Lenny&apos;s archive...</p>
         ) : null}
@@ -49,9 +136,11 @@ export default function AnswerStreamPanel({
             <p className="text-sm font-semibold text-indigo-950">Answer generation stopped early</p>
             <p className="text-sm text-rose-800">{errorMessage}</p>
             {trimmedAnswer ? (
-              <p className="whitespace-pre-wrap text-slate-800" data-testid="answer-stream-text">
-                {answerText}
-              </p>
+              <div className="text-sm leading-relaxed text-slate-800" data-testid="answer-stream-text">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                  {answerText}
+                </ReactMarkdown>
+              </div>
             ) : null}
             {onRetryAnswer ? (
               <button
@@ -74,7 +163,11 @@ export default function AnswerStreamPanel({
         {!searchLoading && !errorMessage && insufficientEvidence ? (
           <div className="space-y-3">
             {trimmedAnswer ? (
-              <p className="whitespace-pre-wrap text-slate-800">{answerText}</p>
+              <div className="text-sm leading-relaxed text-slate-800">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                  {answerText}
+                </ReactMarkdown>
+              </div>
             ) : null}
             <p className="font-medium text-slate-900">Not enough evidence in the archive for a grounded answer.</p>
             <p className="text-slate-600">Try one of these broader queries:</p>
@@ -98,15 +191,17 @@ export default function AnswerStreamPanel({
           <>
             {showPrelude ? <p className="mb-2 italic text-slate-500">Thinking with sources...</p> : null}
             {trimmedAnswer ? (
-              <p className="whitespace-pre-wrap" data-testid="answer-stream-text">
-                {answerText}
+              <div className="text-sm leading-relaxed text-slate-800" data-testid="answer-stream-text">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                  {answerText}
+                </ReactMarkdown>
                 {streamActive ? (
                   <span
                     className="ml-0.5 inline-block h-4 w-1 animate-pulse bg-indigo-500 align-middle"
                     aria-hidden
                   />
                 ) : null}
-              </p>
+              </div>
             ) : null}
             {idle ? (
               <p className="text-slate-500">Submit a question to stream a grounded answer with citations.</p>

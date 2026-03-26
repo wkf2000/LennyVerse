@@ -21,6 +21,15 @@ const NODE_COLORS: Record<GraphNode["type"], string> = {
   concept: "#c4b5fd",
 };
 
+const CONTENT_LABEL_MAX_CHARS = 49;
+
+function displayNodeLabel(node: GraphNode): string {
+  if (node.type !== "content" || node.label.length <= CONTENT_LABEL_MAX_CHARS) {
+    return node.label;
+  }
+  return `${node.label.slice(0, CONTENT_LABEL_MAX_CHARS - 1)}…`;
+}
+
 export default function GraphCanvas({
   nodes,
   edges,
@@ -140,7 +149,7 @@ export default function GraphCanvas({
       .selectAll("text")
       .data(forceNodes)
       .join("text")
-      .text((d) => d.label)
+      .text((d) => displayNodeLabel(d))
       .attr("font-size", 11)
       .attr("fill", "#e8e8e8")
       .attr("text-anchor", "middle")

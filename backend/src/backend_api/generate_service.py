@@ -252,7 +252,9 @@ def _build_outline_system_prompt(num_weeks: int, difficulty: str) -> str:
         '"advanced" = nuanced strategy and edge cases\n'
         "- Only reference content_id values from the provided sources\n"
         "- For each reading, explain in one sentence why it fits that week\n"
-        "- If the corpus has thin coverage for a week's theme, flag it honestly by reducing readings\n\n"
+        "- If the corpus has thin coverage for a week's theme, flag it honestly by reducing readings\n"
+        "- Strict JSON only: double quotes for every key and string; escape any literal double quote inside "
+        "theme, description, title, or relevance_summary as backslash-doublequote; no trailing commas\n\n"
         "Respond with JSON: "
         '{"weeks":[{"week_number":int,"theme":str,"description":str,"readings":[{"content_id":str,'
         '"title":str,"content_type":str,"relevance_summary":str}]}]}'
@@ -271,6 +273,17 @@ def _build_outline_user_prompt(topic: str, hits: list[RagChunkHit]) -> str:
         )
     sources_block = "\n".join(lines) if lines else "(no results found)"
     return f"Topic: {topic}\n\nAvailable sources:\n{sources_block}"
+
+
+def _build_outline_json_repair_prompt(num_weeks: int, difficulty: str) -> str:
+    return (
+        "The previous outline output was not valid JSON. The usual mistake is unescaped double quotes "
+        "inside theme, description, title, or relevance_summary (any \" inside those strings must be written as \\\").\n"
+        "Respond with exactly one JSON object per RFC 8259: double quotes for every key and string value; "
+        "escape internal double quotes; no trailing commas; no markdown fences; no commentary.\n"
+        f"Same task: a {num_weeks}-week course outline at the {difficulty} level using only content_id "
+        "values from the provided sources."
+    )
 
 
 def _default_embed_query(settings: Settings) -> Callable[[str], list[float]]:
@@ -328,12 +341,15 @@ class GenerateService:
         unique_content_ids = {hit.content_id for hit in hits}
         low_coverage = len(unique_content_ids) < LOW_COVERAGE_THRESHOLD
 
+        user_prompt = _build_outline_user_prompt(topic, hits)
         messages = [
             {"role": "system", "content": _build_outline_system_prompt(num_weeks, difficulty)},
-            {"role": "user", "content": _build_outline_user_prompt(topic, hits)},
+            {"role": "user", "content": user_prompt},
         ]
         raw_json = self._llm_json_call(messages, self._settings.openai_model, {"type": "json_object"})
-        parsed = json.loads(raw_json)
+        parsed = self._outline_json_loads_with_one_repair(
+            raw_json, num_weeks, difficulty, user_prompt
+        )
 
         weeks_data = parsed.get("weeks", [])
         weeks = [
@@ -461,6 +477,32 @@ class GenerateService:
             readings=generated_readings,
             key_takeaways=_as_list_of_str(parsed.get("key_takeaways")),
         )
+
+    def _outline_json_loads_with_one_repair(
+        self,
+        raw: str,
+        num_weeks: int,
+        difficulty: str,
+        user_prompt: str,
+    ) -> dict[str, Any]:
+        current = raw
+        for json_attempt in range(2):
+            try:
+                return json.loads(current)
+            except json.JSONDecodeError:
+                if json_attempt == 1:
+                    raise
+                repair_messages = [
+                    {
+                        "role": "system",
+                        "content": _build_outline_json_repair_prompt(num_weeks, difficulty),
+                    },
+                    {"role": "user", "content": user_prompt},
+                ]
+                current = self._llm_json_call(
+                    repair_messages, self._settings.openai_model, {"type": "json_object"}
+                )
+        raise RuntimeError("outline JSON repair loop exhausted")
 
     def _quiz_json_loads_with_one_repair(
         self,

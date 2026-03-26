@@ -26,7 +26,7 @@ const VIEW_PATHS: Record<View, string> = {
   about: "/about",
 };
 const VIEW_LABELS: Record<View, string> = {
-  graph: "graph",
+  graph: "visualization",
   search: "search",
   generate: "generate",
   about: "about",
