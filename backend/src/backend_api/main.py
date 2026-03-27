@@ -28,6 +28,9 @@ from backend_api.rag_service import (
     validate_rag_filters,
 )
 from backend_api.schemas import GraphResponse, NodeDetailResponse, NodeType
+from backend_api.stats_repository import StatsRepository
+from backend_api.stats_schemas import TopicTrendsResponse
+from backend_api.stats_service import StatsService
 
 logging.basicConfig(
     level=logging.INFO,
@@ -106,6 +109,18 @@ def get_generate_service(
     app_settings: Annotated[Settings, Depends(get_settings)],
 ) -> GenerateService:
     return GenerateService(repository=repository, settings=app_settings)
+
+
+def get_stats_repository(
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> StatsRepository:
+    return StatsRepository(app_settings.require_db_url())
+
+
+def get_stats_service(
+    repository: Annotated[StatsRepository, Depends(get_stats_repository)],
+) -> StatsService:
+    return StatsService(repository)
 
 
 @app.get("/health")
@@ -212,6 +227,13 @@ def post_generate_execute(
             yield format_sse_event(event_name, payload)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app.get("/api/stats/topic-trends", response_model=TopicTrendsResponse)
+def get_topic_trends(
+    service: Annotated[StatsService, Depends(get_stats_service)],
+) -> TopicTrendsResponse:
+    return service.get_topic_trends()
 
 
 _FRONTEND_DIST_DIR = Path(__file__).resolve().parents[3] / "frontend" / "dist"
