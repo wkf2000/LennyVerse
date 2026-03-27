@@ -438,49 +438,46 @@ class GenerateService:
         except json.JSONDecodeError:
             raise
 
-        try:
-            readings_raw = parsed.get("readings", [])
-            generated_readings: list[GeneratedReading] = []
-            if isinstance(readings_raw, list):
-                for idx, item in enumerate(readings_raw):
-                    fallback = week.readings[idx] if idx < len(week.readings) else (week.readings[0] if week.readings else None)
-                    if isinstance(item, dict):
-                        generated_readings.append(
-                            GeneratedReading(
-                                content_id=item.get("content_id", fallback.content_id if fallback else "unknown"),
-                                title=item.get("title", fallback.title if fallback else "Unknown"),
-                                content_type=item.get("content_type", fallback.content_type if fallback else "unknown"),
-                                key_concepts=_as_list_of_str(item.get("key_concepts")),
-                                notable_quotes=_as_list_of_str(item.get("notable_quotes")),
-                                discussion_hooks=_as_list_of_str(item.get("discussion_hooks")),
-                            )
+        readings_raw = parsed.get("readings", [])
+        generated_readings: list[GeneratedReading] = []
+        if isinstance(readings_raw, list):
+            for idx, item in enumerate(readings_raw):
+                fallback = week.readings[idx] if idx < len(week.readings) else (week.readings[0] if week.readings else None)
+                if isinstance(item, dict):
+                    generated_readings.append(
+                        GeneratedReading(
+                            content_id=item.get("content_id", fallback.content_id if fallback else "unknown"),
+                            title=item.get("title", fallback.title if fallback else "Unknown"),
+                            content_type=item.get("content_type", fallback.content_type if fallback else "unknown"),
+                            key_concepts=_as_list_of_str(item.get("key_concepts")),
+                            notable_quotes=_as_list_of_str(item.get("notable_quotes")),
+                            discussion_hooks=_as_list_of_str(item.get("discussion_hooks")),
                         )
-                    else:
-                        text = str(item).strip()
-                        generated_readings.append(
-                            GeneratedReading(
-                                content_id=fallback.content_id if fallback else "unknown",
-                                title=fallback.title if fallback else (text or "Unknown"),
-                                content_type=fallback.content_type if fallback else "unknown",
-                                key_concepts=[text] if text else [],
-                                notable_quotes=[],
-                                discussion_hooks=[],
-                            )
-                        )
-            if not generated_readings and week.readings:
-                generated_readings = [
-                    GeneratedReading(
-                        content_id=ref.content_id,
-                        title=ref.title,
-                        content_type=ref.content_type,
-                        key_concepts=[],
-                        notable_quotes=[],
-                        discussion_hooks=[],
                     )
-                    for ref in week.readings
-                ]
-        except Exception:
-            raise
+                else:
+                    text = str(item).strip()
+                    generated_readings.append(
+                        GeneratedReading(
+                            content_id=fallback.content_id if fallback else "unknown",
+                            title=fallback.title if fallback else (text or "Unknown"),
+                            content_type=fallback.content_type if fallback else "unknown",
+                            key_concepts=[text] if text else [],
+                            notable_quotes=[],
+                            discussion_hooks=[],
+                        )
+                    )
+        if not generated_readings and week.readings:
+            generated_readings = [
+                GeneratedReading(
+                    content_id=ref.content_id,
+                    title=ref.title,
+                    content_type=ref.content_type,
+                    key_concepts=[],
+                    notable_quotes=[],
+                    discussion_hooks=[],
+                )
+                for ref in week.readings
+            ]
 
         return GeneratedWeek(
             week_number=week.week_number,

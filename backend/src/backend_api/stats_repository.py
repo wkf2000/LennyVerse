@@ -37,16 +37,18 @@ class StatsRepository:
             SELECT
                 EXTRACT(YEAR FROM c.published_at)::int
                     || '-Q' || EXTRACT(QUARTER FROM c.published_at)::int AS quarter_label,
-                t.tag AS topic,
+                LOWER(TRIM(t.tag)) AS topic,
                 COUNT(*)::int AS cnt
             FROM content c, unnest(c.tags) AS t(tag)
             WHERE c.published_at IS NOT NULL
+              AND t.tag IS NOT NULL
+              AND TRIM(t.tag) <> ''
             GROUP BY EXTRACT(YEAR FROM c.published_at),
                      EXTRACT(QUARTER FROM c.published_at),
-                     t.tag
+                     LOWER(TRIM(t.tag))
             ORDER BY EXTRACT(YEAR FROM c.published_at),
                      EXTRACT(QUARTER FROM c.published_at),
-                     t.tag
+                     LOWER(TRIM(t.tag))
         """
         with self._connect() as conn:
             with conn.cursor(row_factory=dict_row) as cur:

@@ -119,7 +119,7 @@ export default function StatsPage(): JSX.Element {
 
     const yScale = d3
       .scaleLinear()
-      .domain([0, maxCount])
+      .domain([0, Math.max(1, maxCount)])
       .range([height - margin.bottom, margin.top])
       .nice();
 
@@ -260,6 +260,10 @@ export default function StatsPage(): JSX.Element {
 
   const startYear = data ? data.summary.date_range.start.slice(0, 4) : "";
   const endYear = data ? data.summary.date_range.end.slice(0, 4) : "";
+  const hasDateRange = Boolean(startYear && endYear);
+  const corpusLabel = data
+    ? `${data.summary.total_content} total items (${data.summary.total_podcasts} podcasts, ${data.summary.total_newsletters} newsletters)`
+    : "";
 
   return (
     <>
@@ -269,7 +273,7 @@ export default function StatsPage(): JSX.Element {
           Corpus statistics at a glance
         </h1>
         <p className="mt-3 max-w-3xl text-sm text-slate-600">
-          Explore how topics trend over time across 638 podcasts and newsletters
+          Explore how topics trend over time across {corpusLabel}
         </p>
       </header>
 
@@ -296,7 +300,7 @@ export default function StatsPage(): JSX.Element {
             <div className="rounded-xl border border-indigo-100 bg-white/90 p-4 shadow-sm shadow-indigo-100/70">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Date Range</p>
               <p className="mt-1 text-2xl font-semibold text-slate-900">
-                {startYear} – {endYear}
+                {hasDateRange ? `${startYear} - ${endYear}` : "N/A"}
               </p>
             </div>
           </div>

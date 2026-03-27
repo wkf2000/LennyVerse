@@ -31,8 +31,7 @@ class StatsService:
 
         top_topics = sorted(
             [TopicCount(topic=t, count=c) for t, c in topic_totals.items()],
-            key=lambda x: x.count,
-            reverse=True,
+            key=lambda x: (-x.count, x.topic),
         )
 
         date_range = DateRange(
