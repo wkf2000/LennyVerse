@@ -1,5 +1,7 @@
 import type { FormEvent } from "react";
 
+import Spinner from "../Spinner";
+
 export interface SearchInputProps {
   value: string;
   onChange: (value: string) => void;
@@ -40,9 +42,10 @@ export default function SearchInput({
           <button
             type="submit"
             disabled={disabled || !value.trim()}
-            className="shrink-0 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-indigo-50 shadow-sm shadow-indigo-300/40 transition-all duration-200 hover:bg-indigo-500 motion-safe:hover:-translate-y-0.5 hover:shadow-md hover:shadow-indigo-300/50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
+            className="flex shrink-0 items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-indigo-50 shadow-sm shadow-indigo-300/40 transition-all duration-200 hover:bg-indigo-500 motion-safe:hover:-translate-y-0.5 hover:shadow-md hover:shadow-indigo-300/50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
           >
-            Explore
+            {disabled ? <Spinner className="h-4 w-4" /> : null}
+            {disabled ? "Exploring..." : "Explore"}
           </button>
         </div>
       </label>

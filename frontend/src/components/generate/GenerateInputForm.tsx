@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import type { DifficultyLevel } from "../../types/generate";
+import Spinner from "../Spinner";
 
 interface GenerateInputFormProps {
   disabled: boolean;
@@ -72,9 +73,10 @@ export default function GenerateInputForm({ disabled, onSubmit }: GenerateInputF
           type="button"
           disabled={disabled || !topic.trim()}
           onClick={handleSubmit}
-          className="cursor-pointer rounded-full bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-indigo-50 shadow-sm shadow-indigo-300/40 transition-all duration-200 hover:bg-indigo-500 motion-safe:hover:-translate-y-0.5 hover:shadow-md hover:shadow-indigo-300/50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
+          className="flex cursor-pointer items-center gap-2 rounded-full bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-indigo-50 shadow-sm shadow-indigo-300/40 transition-all duration-200 hover:bg-indigo-500 motion-safe:hover:-translate-y-0.5 hover:shadow-md hover:shadow-indigo-300/50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
         >
-          Generate outline
+          {disabled ? <Spinner className="h-3.5 w-3.5" /> : null}
+          {disabled ? "Generating..." : "Generate outline"}
         </button>
       </div>
     </section>
