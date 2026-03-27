@@ -17,7 +17,7 @@ const STARTER_QUESTIONS: readonly string[] = [
   "What are the most common mistakes companies make when building AI products",
   "What are the most common paths for a new grad to break into product management?",
   "How can I use AI to help me practice and prepare for PM interviews?",
-  "What are the most effective prompt engineering techniques to get better results from AI tools like ChatGPT or Claude?",
+  "What is the 'Ladder versus Map' career framework?",
   "How can I empirically measure if my product has achieved product-market fit (PMF)?",
 ];
 
