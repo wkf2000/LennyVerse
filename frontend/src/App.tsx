@@ -15,8 +15,8 @@ const INITIAL_GRAPH: GraphResponse = {
 
 const NODE_TYPE_ORDER: NodeType[] = ["guest", "topic", "content", "concept"];
 const MAX_RELATED_CONTENT_ITEMS = 5;
-const VIEWS = ["graph", "explore", "generate", "stats", "about"] as const;
-const NAV_VIEWS = ["graph", "explore", "generate", "stats", "about"] as const;
+const VIEWS = ["graph", "stats", "explore", "generate", "about"] as const;
+const NAV_VIEWS = ["graph", "stats", "explore", "generate", "about"] as const;
 
 type View = (typeof VIEWS)[number];
 
