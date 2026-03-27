@@ -6,6 +6,7 @@ import SearchWorkspace from "./components/search/SearchWorkspace";
 import type { GraphResponse, NodeDetail, NodeType } from "./types/graph";
 import AboutPage from "./views/AboutPage";
 import GenerateWorkspace from "./views/GenerateWorkspace";
+import StatsPage from "./views/StatsPage";
 
 const INITIAL_GRAPH: GraphResponse = {
   nodes: [],
@@ -14,8 +15,8 @@ const INITIAL_GRAPH: GraphResponse = {
 
 const NODE_TYPE_ORDER: NodeType[] = ["guest", "topic", "content", "concept"];
 const MAX_RELATED_CONTENT_ITEMS = 5;
-const VIEWS = ["graph", "explore", "generate", "about"] as const;
-const NAV_VIEWS = ["graph", "explore", "generate", "about"] as const;
+const VIEWS = ["graph", "explore", "generate", "stats", "about"] as const;
+const NAV_VIEWS = ["graph", "explore", "generate", "stats", "about"] as const;
 
 type View = (typeof VIEWS)[number];
 
@@ -23,12 +24,14 @@ const VIEW_PATHS: Record<View, string> = {
   graph: "/",
   explore: "/explore",
   generate: "/generate",
+  stats: "/stats",
   about: "/about",
 };
 const VIEW_LABELS: Record<View, string> = {
   graph: "visualization",
   explore: "explore",
   generate: "generate",
+  stats: "stats",
   about: "about",
 };
 
@@ -416,6 +419,10 @@ export default function App(): JSX.Element {
             </p>
           </header>
           <GenerateWorkspace />
+        </section>
+      ) : activeView === "stats" ? (
+        <section className="mx-auto max-w-7xl px-4 pb-8 pt-24 sm:px-6 lg:px-8">
+          <StatsPage />
         </section>
       ) : activeView === "about" ? (
         <AboutPage />
