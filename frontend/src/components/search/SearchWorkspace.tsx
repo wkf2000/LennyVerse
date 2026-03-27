@@ -13,6 +13,14 @@ export const INSUFFICIENT_EVIDENCE_SUGGESTIONS: readonly string[] = [
   "Pricing, packaging, and monetization for startups",
 ];
 
+const STARTER_QUESTIONS: readonly string[] = [
+  "What are the most common mistakes companies make when building AI products",
+  "What are the most common paths for a new grad to break into product management?",
+  "How can I use AI to help me practice and prepare for PM interviews?",
+  "What are the most effective prompt engineering techniques to get better results from AI tools like ChatGPT or Claude?",
+  "How can I empirically measure if my product has achieved product-market fit (PMF)?",
+];
+
 export interface SearchWorkspaceProps {
   postSearchFn?: typeof postSearch;
   streamChatFn?: typeof streamChat;
@@ -157,6 +165,20 @@ export default function SearchWorkspace({
 
   return (
     <div className="flex flex-col gap-4">
+      {!answerText && !isSearching && !isStreaming && results.length === 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {STARTER_QUESTIONS.map((q) => (
+            <button
+              key={q}
+              type="button"
+              className="cursor-pointer rounded-full border border-indigo-200 bg-indigo-50/80 px-3 py-1.5 text-xs text-indigo-700 transition-all duration-200 hover:border-indigo-300 hover:bg-indigo-100 hover:shadow-sm hover:shadow-indigo-200/50 motion-safe:hover:-translate-y-0.5"
+              onClick={() => handleSuggestedQueryClick(q)}
+            >
+              {q}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <SearchInput value={query} onChange={setQuery} onSubmit={handleSubmit} disabled={busy} />
 
       <div className="flex flex-col gap-4 lg:max-h-[min(78vh,920px)] lg:min-h-[520px]">
