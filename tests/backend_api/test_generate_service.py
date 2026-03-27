@@ -867,3 +867,101 @@ def test_coerce_quiz_payload_maps_string_options_and_answer_alias(unset_rag_env)
     assert quiz.multiple_choice[0].correct_answer == "B"
     assert quiz.multiple_choice[0].source_week == 1
     assert quiz.short_answer[0].source_week == [2]
+
+
+def test_generate_week_coerces_null_or_blank_reading_fields(unset_rag_env) -> None:
+    from backend_api.config import Settings
+    from backend_api.generate_schemas import ReadingRef, WeekOutline
+    from backend_api.generate_service import GenerateService
+
+    week = WeekOutline(
+        week_number=1,
+        theme="Pricing Foundations",
+        description="Desc",
+        readings=[
+            ReadingRef(
+                content_id="newsletter::pricing-101",
+                title="Pricing 101",
+                content_type="newsletter",
+                relevance_summary="Core",
+            )
+        ],
+    )
+    settings = Settings(_env_file=None)
+
+    def malformed_week_llm(messages: list[dict[str, str]], model: str, response_format: object = None) -> str:
+        del messages, model, response_format
+        return json.dumps(
+            {
+                "learning_objectives": ["Understand pricing basics"],
+                "narrative_summary": None,
+                "readings": [
+                    {
+                        "content_id": None,
+                        "title": " ",
+                        "content_type": "",
+                        "key_concepts": ["A"],
+                        "notable_quotes": [],
+                        "discussion_hooks": [],
+                    }
+                ],
+                "key_takeaways": ["Takeaway"],
+            }
+        )
+
+    service = GenerateService(
+        repository=FakeRepoWithChunkFetch([]),  # type: ignore[arg-type]
+        settings=settings,
+        embed_query=lambda _q: [0.0] * 768,
+        llm_json_call=malformed_week_llm,
+    )
+
+    generated = service._generate_week(week=week, deep_chunks={}, difficulty="intro")
+
+    assert generated.status == "complete"
+    assert generated.narrative_summary == ""
+    assert len(generated.readings) == 1
+    assert generated.readings[0].content_id == "newsletter::pricing-101"
+    assert generated.readings[0].title == "Pricing 101"
+    assert generated.readings[0].content_type == "newsletter"
+
+
+def test_generate_week_handles_non_object_json_payload(unset_rag_env) -> None:
+    from backend_api.config import Settings
+    from backend_api.generate_schemas import ReadingRef, WeekOutline
+    from backend_api.generate_service import GenerateService
+
+    week = WeekOutline(
+        week_number=1,
+        theme="PLG Basics",
+        description="Desc",
+        readings=[
+            ReadingRef(
+                content_id="newsletter::plg-guide",
+                title="PLG Guide",
+                content_type="newsletter",
+                relevance_summary="Core",
+            )
+        ],
+    )
+    settings = Settings(_env_file=None)
+
+    def list_payload_llm(messages: list[dict[str, str]], model: str, response_format: object = None) -> str:
+        del messages, model, response_format
+        return json.dumps(["unexpected", "shape"])
+
+    service = GenerateService(
+        repository=FakeRepoWithChunkFetch([]),  # type: ignore[arg-type]
+        settings=settings,
+        embed_query=lambda _q: [0.0] * 768,
+        llm_json_call=list_payload_llm,
+    )
+
+    generated = service._generate_week(week=week, deep_chunks={}, difficulty="intro")
+
+    assert generated.status == "complete"
+    assert generated.learning_objectives == []
+    assert generated.key_takeaways == []
+    assert generated.narrative_summary == ""
+    assert len(generated.readings) == 1
+    assert generated.readings[0].content_id == "newsletter::plg-guide"

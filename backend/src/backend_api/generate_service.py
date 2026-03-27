@@ -36,6 +36,13 @@ def _as_list_of_str(value: Any) -> list[str]:
     return []
 
 
+def _coerce_nonempty_str(value: Any, *, fallback: str) -> str:
+    if value is None:
+        return fallback
+    text = str(value).strip()
+    return text if text else fallback
+
+
 def _quiz_int_counts_for_retry(parsed: dict[str, Any]) -> tuple[int, int] | None:
     """Detect mistaken payloads where the model returned counts instead of question arrays."""
     mc = parsed.get("multiple_choice")
@@ -434,9 +441,10 @@ class GenerateService:
         ]
         raw = self._llm_json_call(messages, self._settings.openai_model, {"type": "json_object"})
         try:
-            parsed = json.loads(raw)
+            loaded = json.loads(raw)
         except json.JSONDecodeError:
             raise
+        parsed = loaded if isinstance(loaded, dict) else {}
 
         readings_raw = parsed.get("readings", [])
         generated_readings: list[GeneratedReading] = []
@@ -446,9 +454,18 @@ class GenerateService:
                 if isinstance(item, dict):
                     generated_readings.append(
                         GeneratedReading(
-                            content_id=item.get("content_id", fallback.content_id if fallback else "unknown"),
-                            title=item.get("title", fallback.title if fallback else "Unknown"),
-                            content_type=item.get("content_type", fallback.content_type if fallback else "unknown"),
+                            content_id=_coerce_nonempty_str(
+                                item.get("content_id"),
+                                fallback=fallback.content_id if fallback else "unknown",
+                            ),
+                            title=_coerce_nonempty_str(
+                                item.get("title"),
+                                fallback=fallback.title if fallback else "Unknown",
+                            ),
+                            content_type=_coerce_nonempty_str(
+                                item.get("content_type"),
+                                fallback=fallback.content_type if fallback else "unknown",
+                            ),
                             key_concepts=_as_list_of_str(item.get("key_concepts")),
                             notable_quotes=_as_list_of_str(item.get("notable_quotes")),
                             discussion_hooks=_as_list_of_str(item.get("discussion_hooks")),
@@ -484,7 +501,7 @@ class GenerateService:
             theme=week.theme,
             status="complete",
             learning_objectives=_as_list_of_str(parsed.get("learning_objectives")),
-            narrative_summary=str(parsed.get("narrative_summary", "")),
+            narrative_summary=_coerce_nonempty_str(parsed.get("narrative_summary"), fallback=""),
             readings=generated_readings,
             key_takeaways=_as_list_of_str(parsed.get("key_takeaways")),
         )
