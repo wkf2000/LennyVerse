@@ -29,7 +29,7 @@ New env vars in `.env` (with corresponding additions to `.env.example`):
 | `SUMMARIZE_MODEL` | (required) | Model name (e.g. `gpt-4o-mini`) |
 | `SUMMARIZE_MAX_CHARS` | `8000` | Max body characters sent to the LLM |
 
-These are added to `data_pipeline.config.Settings` as optional fields (they are only required when the summarize script runs).
+These are added to `data_pipeline.config.Settings` as `Optional[str] = None`. The summarize script validates their presence at startup and raises a clear error if any are missing (following the existing `require_db_url()` pattern). A separate LLM endpoint is used because the summarization model may differ from the RAG chat model configured via `OPENAI_*` vars.
 
 ## Database Changes
 
@@ -65,14 +65,16 @@ summarize:
 1. Load `Settings`, connect to DB.
 2. Query content rows from DB. Filter out rows with non-null `summary` unless `--force`.
 3. For each eligible row:
-   a. Load the markdown file via the existing `parse_markdown_file` parser.
-   b. Truncate `body` to `SUMMARIZE_MAX_CHARS` characters.
-   c. Call the LLM with a system prompt and the truncated body as user content.
-   d. Write the returned summary to `content.summary` in DB.
-   e. Print progress: `[ok] summarized "{title}" ({i}/{total})`.
+   a. Reconstruct the full file path as `settings.data_root / row["filename"]`.
+   b. Load the markdown file via the existing `parse_markdown_file` parser; use only the `.body` field.
+   c. If the body is empty or whitespace-only, skip the row with a warning log (do not call the LLM).
+   d. Truncate `body` to `SUMMARIZE_MAX_CHARS` characters.
+   e. Call the LLM with a system prompt and the truncated body as user content.
+   f. Write the returned summary to `content.summary` in DB.
+   g. Print progress: `[ok] summarized "{title}" ({i}/{total})`.
 4. Print final count on completion.
 
-If an LLM call fails for a single item, log a warning and continue to the next item (do not abort the run).
+Per-item error handling: if the file referenced by `filename` does not exist on disk, or an LLM call fails, log a warning and continue to the next item (do not abort the run).
 
 ## LLM Prompt
 
