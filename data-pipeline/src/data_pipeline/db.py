@@ -189,3 +189,20 @@ class Database:
                 )
                 rows = cur.fetchall()
         return [json.loads(json.dumps(row, default=str)) for row in rows]
+
+    def fetch_unsummarized_content(self, force: bool = False) -> list[dict]:
+        if force:
+            sql = "SELECT id, filename, title FROM content ORDER BY id"
+        else:
+            sql = "SELECT id, filename, title FROM content WHERE summary IS NULL ORDER BY id"
+        with self._connect() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(sql)
+                return cur.fetchall()
+
+    def update_summary(self, content_id: str, summary: str) -> None:
+        sql = "UPDATE content SET summary = %(summary)s, updated_at = now() WHERE id = %(id)s"
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, {"summary": summary, "id": content_id})
+            conn.commit()
