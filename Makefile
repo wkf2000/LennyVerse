@@ -1,6 +1,6 @@
 PYTHONPATH := backend/src:data-pipeline/src
 
-.PHONY: setup run-api ingest ingest-dry-run migrate verify test normalize-data
+.PHONY: setup run-api ingest ingest-dry-run migrate verify test normalize-data summarize
 
 setup:
 	uv sync
@@ -28,6 +28,9 @@ migrate:
 
 verify:
 	PYTHONPATH=$(PYTHONPATH) uv run python -m data_pipeline.scripts.verify_ingest
+
+summarize:
+	PYTHONPATH=$(PYTHONPATH) uv run python -m data_pipeline.scripts.summarize
 
 test:
 	PYTHONPATH=$(PYTHONPATH) uv run pytest
