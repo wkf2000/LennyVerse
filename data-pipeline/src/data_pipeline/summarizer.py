@@ -6,8 +6,8 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from data_pipeline.config import Settings
 
 SYSTEM_PROMPT = (
-    "Summarize the following content in 2-3 concise sentences. "
-    "Focus on the key topics, insights, and takeaways."
+    "Summarize the following content in 3-5 concise sentences. "
+    "Focus on the key topics, insights, frameworks, and takeaways."
 )
 
 
