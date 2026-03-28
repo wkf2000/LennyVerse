@@ -64,11 +64,10 @@ export default function AboutPage(): JSX.Element {
             Ethics and mission 🌱
           </h2>
           <p className="mt-2">
-            The product is designed so AI <strong className="font-medium text-slate-800">augments educators</strong>,
-            not replaces them: transparent retrieval, visible generation steps, and citations you can verify. For
-            this build, <strong className="font-medium text-slate-800">Gonzaga-style mission framing</strong>—care
-            for the whole person, ethical use of technology, and service—is a design principle, not a claim of
-            formal institutional sponsorship.
+            We built this to augment educators, not replace them. By providing transparent retrieval, visible generation steps, 
+            and verifiable citations, we keep the human in the loop. While not formally sponsored by the university, 
+            our design is rooted in Gonzaga-style mission framing: prioritizing care for the whole person, 
+            ethical tech integration, and a commitment to service.
           </p>
         </section>
 
