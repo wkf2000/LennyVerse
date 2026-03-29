@@ -23,6 +23,9 @@ COPY --from=frontend-build /app/frontend/dist ./frontend/dist
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONPATH="/app/backend/src:/app/data-pipeline/src"
 
-EXPOSE 8000
+EXPOSE 8000 8001
 
-CMD ["uv", "run", "uvicorn", "backend_api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+COPY entrypoint.sh ./
+RUN chmod +x entrypoint.sh
+
+CMD ["./entrypoint.sh"]

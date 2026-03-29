@@ -35,5 +35,8 @@ summarize:
 summarize-limit:
 	PYTHONPATH=$(PYTHONPATH) uv run python -m data_pipeline.scripts.summarize --limit $(LIMIT)
 
+run-mcp:
+	PYTHONPATH=$(PYTHONPATH) uv run python -m backend_api.mcp_server --sse
+
 test:
 	PYTHONPATH=$(PYTHONPATH) uv run pytest
