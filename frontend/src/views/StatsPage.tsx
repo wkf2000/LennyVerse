@@ -1,8 +1,21 @@
 import * as d3 from "d3";
 import { useEffect, useRef, useState } from "react";
 
-import { fetchTopicTrends } from "../api/statsApi";
-import type { TopicTrendsResponse } from "../api/statsApi";
+import {
+  fetchTopicTrends,
+  fetchHeatmapData,
+  fetchContentBreakdown,
+  fetchTopGuests,
+} from "../api/statsApi";
+import type {
+  TopicTrendsResponse,
+  HeatmapResponse,
+  ContentBreakdownResponse,
+  TopGuestsResponse,
+} from "../api/statsApi";
+import HeatmapChart from "../components/stats/HeatmapChart";
+import ContentBreakdownChart from "../components/stats/ContentBreakdownChart";
+import GuestLeaderboard from "../components/stats/GuestLeaderboard";
 
 const TOPIC_COLORS: Record<string, string> = {
   ai: "#6366f1",
@@ -25,7 +38,10 @@ const TOPIC_COLORS: Record<string, string> = {
 };
 
 export default function StatsPage(): JSX.Element {
-  const [data, setData] = useState<TopicTrendsResponse | null>(null);
+  const [trendsData, setTrendsData] = useState<TopicTrendsResponse | null>(null);
+  const [heatmapData, setHeatmapData] = useState<HeatmapResponse | null>(null);
+  const [breakdownData, setBreakdownData] = useState<ContentBreakdownResponse | null>(null);
+  const [guestsData, setGuestsData] = useState<TopGuestsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | undefined>();
   const [selectedTopics, setSelectedTopics] = useState<Set<string>>(new Set());
@@ -39,16 +55,25 @@ export default function StatsPage(): JSX.Element {
     setLoading(true);
     setError(undefined);
 
-    fetchTopicTrends()
-      .then((payload) => {
+    Promise.all([
+      fetchTopicTrends().catch(() => null),
+      fetchHeatmapData().catch(() => null),
+      fetchContentBreakdown().catch(() => null),
+      fetchTopGuests().catch(() => null),
+    ])
+      .then(([trends, heatmap, breakdown, guests]) => {
         if (cancelled) return;
-        setData(payload);
-        const top5 = new Set(payload.summary.top_topics.slice(0, 5).map((t) => t.topic));
-        setSelectedTopics(top5);
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load statistics.");
+        if (trends) {
+          setTrendsData(trends);
+          const top5 = new Set(trends.summary.top_topics.slice(0, 5).map((t) => t.topic));
+          setSelectedTopics(top5);
+        }
+        if (heatmap) setHeatmapData(heatmap);
+        if (breakdown) setBreakdownData(breakdown);
+        if (guests) setGuestsData(guests);
+
+        if (!trends && !heatmap && !breakdown && !guests) {
+          setError("Failed to load statistics.");
         }
       })
       .finally(() => {
@@ -74,7 +99,7 @@ export default function StatsPage(): JSX.Element {
 
   // D3 chart rendering
   useEffect(() => {
-    if (!data || !svgRef.current || !chartContainerRef.current) return;
+    if (!trendsData || !svgRef.current || !chartContainerRef.current) return;
 
     const containerWidth = chartContainerRef.current.clientWidth;
     const width = containerWidth;
@@ -88,11 +113,11 @@ export default function StatsPage(): JSX.Element {
     if (selectedTopics.size === 0) return;
 
     // Data transformation
-    const allQuarters = Array.from(new Set(data.trends.map((t) => t.quarter)));
+    const allQuarters = Array.from(new Set(trendsData.trends.map((t) => t.quarter)));
     // quarters already sorted chronologically from backend
 
     const trendMap = new Map<string, Map<string, number>>();
-    for (const item of data.trends) {
+    for (const item of trendsData.trends) {
       if (!trendMap.has(item.topic)) {
         trendMap.set(item.topic, new Map());
       }
@@ -250,7 +275,7 @@ export default function StatsPage(): JSX.Element {
         verticalLine.style("opacity", 0);
         tooltip.style("opacity", "0");
       });
-  }, [data, selectedTopics]);
+  }, [trendsData, selectedTopics]);
 
   if (loading) {
     return (
@@ -258,11 +283,11 @@ export default function StatsPage(): JSX.Element {
     );
   }
 
-  const startYear = data ? data.summary.date_range.start.slice(0, 4) : "";
-  const endYear = data ? data.summary.date_range.end.slice(0, 4) : "";
+  const startYear = trendsData ? trendsData.summary.date_range.start.slice(0, 4) : "";
+  const endYear = trendsData ? trendsData.summary.date_range.end.slice(0, 4) : "";
   const hasDateRange = Boolean(startYear && endYear);
-  const corpusLabel = data
-    ? `${data.summary.total_content} total items (${data.summary.total_podcasts} podcasts, ${data.summary.total_newsletters} newsletters)`
+  const corpusLabel = trendsData
+    ? `${trendsData.summary.total_content} total items (${trendsData.summary.total_podcasts} podcasts, ${trendsData.summary.total_newsletters} newsletters)`
     : "";
 
   return (
@@ -270,10 +295,10 @@ export default function StatsPage(): JSX.Element {
       <header className="mb-6">
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-700">LennyVerse</p>
         <h1 className="mt-2 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
-          Corpus statistics at a glance
+          Content DNA Stats Dashboard
         </h1>
         <p className="mt-3 max-w-3xl text-sm text-slate-600">
-          Explore how topics trend over time across {corpusLabel}
+          Publishing activity, content breakdown, top guests, and topic trends across {corpusLabel}
         </p>
       </header>
 
@@ -281,33 +306,80 @@ export default function StatsPage(): JSX.Element {
         <div className="mb-4 rounded-md border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>
       ) : null}
 
-      {data ? (
-        <>
-          {/* Summary cards */}
-          <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
-            <div className="rounded-xl border border-indigo-100 bg-white/90 p-4 shadow-sm shadow-indigo-100/70">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total Content</p>
-              <p className="mt-1 text-2xl font-semibold text-slate-900">{data.summary.total_content}</p>
-            </div>
-            <div className="rounded-xl border border-indigo-100 bg-white/90 p-4 shadow-sm shadow-indigo-100/70">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Podcasts</p>
-              <p className="mt-1 text-2xl font-semibold text-slate-900">{data.summary.total_podcasts}</p>
-            </div>
-            <div className="rounded-xl border border-indigo-100 bg-white/90 p-4 shadow-sm shadow-indigo-100/70">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Newsletters</p>
-              <p className="mt-1 text-2xl font-semibold text-slate-900">{data.summary.total_newsletters}</p>
-            </div>
-            <div className="rounded-xl border border-indigo-100 bg-white/90 p-4 shadow-sm shadow-indigo-100/70">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Date Range</p>
-              <p className="mt-1 text-2xl font-semibold text-slate-900">
-                {hasDateRange ? `${startYear} - ${endYear}` : "N/A"}
-              </p>
-            </div>
+      {/* Summary cards */}
+      {trendsData ? (
+        <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+          <div className="rounded-xl border border-indigo-100 bg-white/90 p-4 shadow-sm shadow-indigo-100/70">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total Content</p>
+            <p className="mt-1 text-2xl font-semibold text-slate-900">{trendsData.summary.total_content}</p>
           </div>
+          <div className="rounded-xl border border-indigo-100 bg-white/90 p-4 shadow-sm shadow-indigo-100/70">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Podcasts</p>
+            <p className="mt-1 text-2xl font-semibold text-slate-900">{trendsData.summary.total_podcasts}</p>
+          </div>
+          <div className="rounded-xl border border-indigo-100 bg-white/90 p-4 shadow-sm shadow-indigo-100/70">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Newsletters</p>
+            <p className="mt-1 text-2xl font-semibold text-slate-900">{trendsData.summary.total_newsletters}</p>
+          </div>
+          <div className="rounded-xl border border-indigo-100 bg-white/90 p-4 shadow-sm shadow-indigo-100/70">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Date Range</p>
+            <p className="mt-1 text-2xl font-semibold text-slate-900">
+              {hasDateRange ? `${startYear} - ${endYear}` : "N/A"}
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Publishing Activity section */}
+      <div className="mb-6">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Publishing Activity</h2>
+        <div className="rounded-xl border border-indigo-100 bg-white/90 p-4 shadow-sm shadow-indigo-100/70">
+          {heatmapData ? (
+            <HeatmapChart data={heatmapData.items} />
+          ) : (
+            <div className="grid h-48 place-items-center text-sm text-slate-500">
+              No publishing data available.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Two-column grid: Content Breakdown + Top Guests */}
+      <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div>
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Content Breakdown</h2>
+          <div className="rounded-xl border border-indigo-100 bg-white/90 p-4 shadow-sm shadow-indigo-100/70">
+            {breakdownData ? (
+              <ContentBreakdownChart data={breakdownData.breakdown} />
+            ) : (
+              <div className="grid h-48 place-items-center text-sm text-slate-500">
+                No content breakdown data available.
+              </div>
+            )}
+          </div>
+        </div>
+        <div>
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Top Guests</h2>
+          <div className="rounded-xl border border-indigo-100 bg-white/90 p-4 shadow-sm shadow-indigo-100/70">
+            {guestsData ? (
+              <GuestLeaderboard data={guestsData.guests} />
+            ) : (
+              <div className="grid h-48 place-items-center text-sm text-slate-500">
+                No guest data available.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Topic Trends section */}
+      {trendsData ? (
+        <div className="mb-6">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Topic Trends</h2>
 
           {/* Topic pill selector */}
-          <div className="mb-6 flex flex-wrap gap-2">
-            {data.summary.top_topics.map((t) => {
+          <div className="mb-4 flex flex-wrap gap-2">
+            {trendsData.summary.top_topics.map((t) => {
               const isActive = selectedTopics.has(t.topic);
               const color = TOPIC_COLORS[t.topic] ?? "#94a3b8";
               return (
@@ -349,7 +421,7 @@ export default function StatsPage(): JSX.Element {
               style={{ opacity: 0 }}
             />
           </div>
-        </>
+        </div>
       ) : null}
     </>
   );
