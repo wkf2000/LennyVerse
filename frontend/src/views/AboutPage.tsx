@@ -39,9 +39,8 @@ export default function AboutPage(): JSX.Element {
               answer backed by retrieved excerpts you can inspect.
             </li>
             <li>
-              <strong className="font-medium text-slate-800">Course materials</strong> — Request an outline, review
-              it, then run streamed generation for a structured syllabus and quiz with step logs and source
-              grounding.
+              <strong className="font-medium text-slate-800">Teaching modules</strong> — Request an outline, review
+              it, then run streamed generation for a structured teaching modules and assessments with transparent step logs and grounded sources.
             </li>
           </ul>
         </section>

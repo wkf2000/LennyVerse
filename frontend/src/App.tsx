@@ -242,7 +242,7 @@ export default function App(): JSX.Element {
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-700">LennyVerse ✨</p>
               <h1 className="mt-2 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
-                One knowledge graph for modern teaching
+                A knowledge graph for modern teaching
               </h1>
               <p className="mt-3 max-w-3xl text-sm text-slate-600">
                 Explore 638 podcasts and newsletters with a graph-first view built for clarity, discovery, and course design
