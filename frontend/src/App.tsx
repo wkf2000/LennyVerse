@@ -428,7 +428,7 @@ export default function App(): JSX.Element {
           <header className="mb-6">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-700">LennyVerse 🧠</p>
             <h1 className="mt-2 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
-              Build a syllabus and quiz from the archive
+              Build a syllabus and assessment from the archive
             </h1>
             <p className="mt-3 max-w-3xl text-sm text-slate-600">
               Generate a course outline first, review it, then run full syllabus and assessment generation with
