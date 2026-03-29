@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from unittest.mock import patch
+
+import pytest
+
 from backend_api.stats_repository import StatsRepository, TrendRow, SummaryRow
 
 
@@ -25,6 +29,12 @@ class FakeStatsRepository(StatsRepository):
 
     def fetch_summary(self) -> SummaryRow:
         return self._summary_row
+
+
+@pytest.fixture(autouse=True)
+def _clear_cache() -> None:
+    from backend_api.stats_service import clear_stats_cache
+    clear_stats_cache()
 
 
 def test_fake_repository_returns_empty_trends() -> None:
@@ -88,6 +98,57 @@ def test_service_handles_none_dates() -> None:
 
     assert result.summary.date_range.start == ""
     assert result.summary.date_range.end == ""
+
+
+def test_service_caches_result() -> None:
+    repo = FakeStatsRepository(
+        trend_rows=[TrendRow(quarter="2023-Q1", topic="ai", count=5)],
+        summary_row=SummaryRow(
+            total_content=10, total_podcasts=5, total_newsletters=5,
+            min_date=None, max_date=None,
+        ),
+    )
+    service = StatsService(repo)
+    first = service.get_topic_trends()
+    assert first.summary.total_content == 10
+
+    repo2 = FakeStatsRepository(
+        trend_rows=[TrendRow(quarter="2023-Q1", topic="ai", count=99)],
+        summary_row=SummaryRow(
+            total_content=999, total_podcasts=500, total_newsletters=499,
+            min_date=None, max_date=None,
+        ),
+    )
+    service2 = StatsService(repo2)
+    second = service2.get_topic_trends()
+    assert second.summary.total_content == 10  # still cached
+
+
+def test_service_cache_expires() -> None:
+    from backend_api import stats_service
+
+    repo = FakeStatsRepository(
+        trend_rows=[TrendRow(quarter="2023-Q1", topic="ai", count=5)],
+        summary_row=SummaryRow(
+            total_content=10, total_podcasts=5, total_newsletters=5,
+            min_date=None, max_date=None,
+        ),
+    )
+    service = StatsService(repo)
+    service.get_topic_trends()
+
+    stats_service._cache_timestamp -= stats_service._CACHE_TTL_SECONDS + 1
+
+    repo2 = FakeStatsRepository(
+        trend_rows=[TrendRow(quarter="2023-Q1", topic="ai", count=99)],
+        summary_row=SummaryRow(
+            total_content=999, total_podcasts=500, total_newsletters=499,
+            min_date=None, max_date=None,
+        ),
+    )
+    service2 = StatsService(repo2)
+    result = service2.get_topic_trends()
+    assert result.summary.total_content == 999  # fresh data
 
 
 def test_service_computes_top_topics_sorted() -> None:

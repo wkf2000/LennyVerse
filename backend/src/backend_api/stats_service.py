@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from collections import defaultdict
 
 from backend_api.stats_repository import StatsRepository
@@ -11,12 +12,28 @@ from backend_api.stats_schemas import (
     TopicTrendsResponse,
 )
 
+_CACHE_TTL_SECONDS = 300
+
+_cache: TopicTrendsResponse | None = None
+_cache_timestamp: float = 0.0
+
+
+def clear_stats_cache() -> None:
+    global _cache, _cache_timestamp
+    _cache = None
+    _cache_timestamp = 0.0
+
 
 class StatsService:
     def __init__(self, repository: StatsRepository) -> None:
         self._repository = repository
 
     def get_topic_trends(self) -> TopicTrendsResponse:
+        global _cache, _cache_timestamp
+
+        now = time.monotonic()
+        if _cache is not None and (now - _cache_timestamp) < _CACHE_TTL_SECONDS:
+            return _cache
         trend_rows = self._repository.fetch_topic_trends()
         summary_row = self._repository.fetch_summary()
 
@@ -47,4 +64,7 @@ class StatsService:
             top_topics=top_topics,
         )
 
-        return TopicTrendsResponse(trends=trends, summary=summary)
+        result = TopicTrendsResponse(trends=trends, summary=summary)
+        _cache = result
+        _cache_timestamp = now
+        return result
