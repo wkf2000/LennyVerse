@@ -36,3 +36,59 @@ export async function fetchTopicTrends(): Promise<TopicTrendsResponse> {
   }
   return (await response.json()) as TopicTrendsResponse;
 }
+
+export interface HeatmapItem {
+  year: number;
+  week: number;
+  type: string;
+  title: string;
+  published_at: string;
+}
+
+export interface HeatmapResponse {
+  items: HeatmapItem[];
+}
+
+export interface ContentBreakdownItem {
+  quarter: string;
+  type: string;
+  count: number;
+  avg_word_count: number;
+}
+
+export interface ContentBreakdownResponse {
+  breakdown: ContentBreakdownItem[];
+}
+
+export interface GuestCountItem {
+  guest: string;
+  count: number;
+}
+
+export interface TopGuestsResponse {
+  guests: GuestCountItem[];
+}
+
+export async function fetchHeatmapData(): Promise<HeatmapResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/stats/heatmap`);
+  if (!response.ok) {
+    throw new Error(`Failed to load heatmap data (${response.status})`);
+  }
+  return (await response.json()) as HeatmapResponse;
+}
+
+export async function fetchContentBreakdown(): Promise<ContentBreakdownResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/stats/content-breakdown`);
+  if (!response.ok) {
+    throw new Error(`Failed to load content breakdown (${response.status})`);
+  }
+  return (await response.json()) as ContentBreakdownResponse;
+}
+
+export async function fetchTopGuests(): Promise<TopGuestsResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/stats/top-guests`);
+  if (!response.ok) {
+    throw new Error(`Failed to load top guests (${response.status})`);
+  }
+  return (await response.json()) as TopGuestsResponse;
+}
