@@ -48,3 +48,8 @@ class NodeDetailResponse(BaseModel):
     node: GraphNodeResponse
     connected_node_count: int
     related_content: list[RelatedContentResponse]
+
+
+class ContentSummaryResponse(BaseModel):
+    content_id: str
+    summary: str | None = None

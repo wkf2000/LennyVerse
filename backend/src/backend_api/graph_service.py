@@ -67,6 +67,9 @@ class GraphService:
             edges=[_to_edge_response(edge) for edge in filtered_edges],
         )
 
+    def get_content_summary(self, content_id: str) -> str | None:
+        return self._repository.get_content_summary(content_id)
+
     def get_node_detail(self, node_id: str) -> NodeDetailResponse | None:
         node = self._repository.get_node_by_id(node_id)
         if not node:

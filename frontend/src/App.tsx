@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { fetchGraph, fetchNodeDetail } from "./api/graphApi";
+import { fetchContentSummary, fetchGraph, fetchNodeDetail } from "./api/graphApi";
 import GraphCanvas from "./components/GraphCanvas";
 import SearchWorkspace from "./components/search/SearchWorkspace";
 import type { GraphResponse, NodeDetail, NodeType } from "./types/graph";
@@ -84,6 +84,7 @@ export default function App(): JSX.Element {
   const [nodeTypes, setNodeTypes] = useState<NodeType[]>(["guest", "topic", "content"]);
   const [activeView, setActiveView] = useState<View>(() => viewFromPathname(window.location.pathname));
   const [showHeroCopy, setShowHeroCopy] = useState(false);
+  const [summaryPopup, setSummaryPopup] = useState<{ title: string; summary: string | null; loading: boolean } | null>(null);
 
   useEffect(() => {
     const handlePopState = (): void => {
@@ -182,6 +183,17 @@ export default function App(): JSX.Element {
     }),
     [graphData.edges.length, graphData.nodes.length],
   );
+
+  function handleContentClick(contentId: string, title: string): void {
+    setSummaryPopup({ title, summary: null, loading: true });
+    fetchContentSummary(contentId)
+      .then((result) => {
+        setSummaryPopup({ title, summary: result.summary, loading: false });
+      })
+      .catch(() => {
+        setSummaryPopup({ title, summary: null, loading: false });
+      });
+  }
 
   function toggleNodeType(type: NodeType): void {
     setNodeTypes((current) => {
@@ -376,13 +388,18 @@ export default function App(): JSX.Element {
                         </li>
                       ) : (
                         selectedNodeDetail.related_content.slice(0, MAX_RELATED_CONTENT_ITEMS).map((item) => (
-                          <li key={item.id} className="rounded-md border border-slate-200 bg-white p-2">
+                          <li
+                            key={item.id}
+                            className="cursor-pointer rounded-md border border-slate-200 bg-white p-2 transition-colors hover:border-indigo-300 hover:bg-indigo-50/50"
+                            onClick={() => handleContentClick(item.id, item.title)}
+                          >
                             <p className="text-sm font-medium text-slate-900">{item.title}</p>
                             <p className="mt-1 text-xs text-slate-500">
                               {item.content_type}
                               {item.published_at ? ` · ${item.published_at}` : ""}
                             </p>
                             {item.guest ? <p className="mt-1 text-xs text-slate-500">Guest: {item.guest}</p> : null}
+                            <p className="mt-1 text-xs text-indigo-500">Click to view summary</p>
                           </li>
                         ))
                       )}
@@ -426,6 +443,40 @@ export default function App(): JSX.Element {
         </section>
       ) : activeView === "about" ? (
         <AboutPage />
+      ) : null}
+
+      {summaryPopup ? (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm"
+          onClick={() => setSummaryPopup(null)}
+        >
+          <div
+            className="mx-4 max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-indigo-200 bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="text-lg font-semibold text-slate-900">{summaryPopup.title}</h3>
+              <button
+                type="button"
+                className="shrink-0 cursor-pointer rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                onClick={() => setSummaryPopup(null)}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+            <div className="mt-4">
+              {summaryPopup.loading ? (
+                <p className="text-sm text-slate-500">Loading summary...</p>
+              ) : summaryPopup.summary ? (
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{summaryPopup.summary}</p>
+              ) : (
+                <p className="text-sm text-slate-500">No summary available for this content.</p>
+              )}
+            </div>
+          </div>
+        </div>
       ) : null}
     </main>
   );

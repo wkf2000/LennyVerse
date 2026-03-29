@@ -37,6 +37,11 @@ export interface NodeDetail {
   related_content: RelatedContent[];
 }
 
+export interface ContentSummary {
+  content_id: string;
+  summary: string | null;
+}
+
 export interface GraphFilters {
   nodeTypes: NodeType[];
   topic?: string;

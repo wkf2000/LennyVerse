@@ -27,7 +27,7 @@ from backend_api.rag_service import (
     format_sse_event,
     validate_rag_filters,
 )
-from backend_api.schemas import GraphResponse, NodeDetailResponse, NodeType
+from backend_api.schemas import ContentSummaryResponse, GraphResponse, NodeDetailResponse, NodeType
 from backend_api.stats_repository import StatsRepository
 from backend_api.stats_schemas import TopicTrendsResponse
 from backend_api.stats_service import StatsService
@@ -154,6 +154,15 @@ def get_graph_node(
     if not detail:
         raise HTTPException(status_code=404, detail=f"Node '{node_id}' not found.")
     return detail
+
+
+@app.get("/api/content/{content_id}/summary", response_model=ContentSummaryResponse)
+def get_content_summary(
+    content_id: str,
+    service: Annotated[GraphService, Depends(get_graph_service)],
+) -> ContentSummaryResponse:
+    summary = service.get_content_summary(content_id)
+    return ContentSummaryResponse(content_id=content_id, summary=summary)
 
 
 @app.post("/api/search", response_model=SearchResponse)

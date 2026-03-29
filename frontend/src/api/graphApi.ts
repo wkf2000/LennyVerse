@@ -1,4 +1,4 @@
-import type { GraphFilters, GraphResponse, NodeDetail } from "../types/graph";
+import type { ContentSummary, GraphFilters, GraphResponse, NodeDetail } from "../types/graph";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
@@ -31,4 +31,12 @@ export async function fetchNodeDetail(nodeId: string): Promise<NodeDetail> {
     throw new Error(`Failed to load node detail (${response.status})`);
   }
   return (await response.json()) as NodeDetail;
+}
+
+export async function fetchContentSummary(contentId: string): Promise<ContentSummary> {
+  const response = await fetch(`${API_BASE_URL}/api/content/${encodeURIComponent(contentId)}/summary`);
+  if (!response.ok) {
+    throw new Error(`Failed to load content summary (${response.status})`);
+  }
+  return (await response.json()) as ContentSummary;
 }

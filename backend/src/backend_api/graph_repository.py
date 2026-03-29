@@ -185,6 +185,21 @@ class GraphRepository:
             for row in rows
         ]
 
+    def get_content_summary(self, content_id: str) -> str | None:
+        query = """
+            SELECT summary
+            FROM content
+            WHERE id = %(content_id)s
+        """
+        with self._connect() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(query, {"content_id": content_id})
+                row = cur.fetchone()
+
+        if not row:
+            return None
+        return row.get("summary")
+
     def list_content_by_ids(self, content_ids: list[str]) -> list[ContentRecord]:
         if not content_ids:
             return []

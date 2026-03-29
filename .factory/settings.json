@@ -1,0 +1,6 @@
+{
+  "enabledPlugins": {
+    "core@factory-plugins": true,
+    "superpowers@superpowers": true
+  }
+}
