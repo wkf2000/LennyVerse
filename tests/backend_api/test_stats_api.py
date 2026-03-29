@@ -4,11 +4,10 @@ from fastapi.testclient import TestClient
 
 from backend_api.main import app, get_stats_service
 from backend_api.stats_schemas import (
-    DateRange,
-    StatsSummary,
-    TopicCount,
-    TopicTrendItem,
-    TopicTrendsResponse,
+    DateRange, StatsSummary, TopicCount, TopicTrendItem, TopicTrendsResponse,
+    HeatmapItem, HeatmapResponse,
+    ContentBreakdownItem, ContentBreakdownResponse,
+    GuestCount, TopGuestsResponse,
 )
 
 
@@ -29,6 +28,30 @@ class _FakeStatsService:
                     TopicCount(topic="growth", count=3),
                 ],
             ),
+        )
+
+    def get_heatmap_data(self) -> HeatmapResponse:
+        return HeatmapResponse(
+            items=[
+                HeatmapItem(year=2023, week=11, type="podcast", title="Ep 1", published_at="2023-03-15"),
+                HeatmapItem(year=2023, week=12, type="newsletter", title="NL 1", published_at="2023-03-20"),
+            ]
+        )
+
+    def get_content_breakdown(self) -> ContentBreakdownResponse:
+        return ContentBreakdownResponse(
+            breakdown=[
+                ContentBreakdownItem(quarter="2023-Q1", type="podcast", count=10, avg_word_count=5000),
+                ContentBreakdownItem(quarter="2023-Q1", type="newsletter", count=15, avg_word_count=2000),
+            ]
+        )
+
+    def get_top_guests(self) -> TopGuestsResponse:
+        return TopGuestsResponse(
+            guests=[
+                GuestCount(guest="Shreyas Doshi", count=10),
+                GuestCount(guest="Elena Verna", count=8),
+            ]
         )
 
 
@@ -58,5 +81,48 @@ def test_stats_topic_trends_trend_shape() -> None:
         assert "quarter" in trend
         assert "topic" in trend
         assert "count" in trend
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_stats_heatmap_returns_200() -> None:
+    app.dependency_overrides[get_stats_service] = lambda: _FakeStatsService()
+    client = TestClient(app)
+    try:
+        response = client.get("/api/stats/heatmap")
+        assert response.status_code == 200
+        payload = response.json()
+        assert "items" in payload
+        assert len(payload["items"]) == 2
+        assert payload["items"][0]["year"] == 2023
+        assert payload["items"][0]["type"] == "podcast"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_stats_content_breakdown_returns_200() -> None:
+    app.dependency_overrides[get_stats_service] = lambda: _FakeStatsService()
+    client = TestClient(app)
+    try:
+        response = client.get("/api/stats/content-breakdown")
+        assert response.status_code == 200
+        payload = response.json()
+        assert "breakdown" in payload
+        assert len(payload["breakdown"]) == 2
+        assert payload["breakdown"][0]["quarter"] == "2023-Q1"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_stats_top_guests_returns_200() -> None:
+    app.dependency_overrides[get_stats_service] = lambda: _FakeStatsService()
+    client = TestClient(app)
+    try:
+        response = client.get("/api/stats/top-guests")
+        assert response.status_code == 200
+        payload = response.json()
+        assert "guests" in payload
+        assert len(payload["guests"]) == 2
+        assert payload["guests"][0]["guest"] == "Shreyas Doshi"
     finally:
         app.dependency_overrides.clear()
