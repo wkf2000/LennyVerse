@@ -23,6 +23,30 @@ class SummaryRow:
     max_date: date | None
 
 
+@dataclass(slots=True)
+class HeatmapRow:
+    id: str
+    title: str
+    type: str
+    published_at: date
+    year: int
+    week: int
+
+
+@dataclass(slots=True)
+class BreakdownRow:
+    quarter: str
+    type: str
+    count: int
+    avg_word_count: int
+
+
+@dataclass(slots=True)
+class GuestRow:
+    guest: str
+    count: int
+
+
 class StatsRepository:
     def __init__(self, db_url: str | None = None) -> None:
         self._db_url = db_url
@@ -95,3 +119,75 @@ class StatsRepository:
             min_date=row.get("min_date"),
             max_date=row.get("max_date"),
         )
+
+    def fetch_heatmap_data(self) -> list[HeatmapRow]:
+        query = """
+            SELECT
+                id, title, type, published_at,
+                EXTRACT(ISOYEAR FROM published_at)::int AS year,
+                EXTRACT(WEEK FROM published_at)::int AS week
+            FROM content
+            WHERE published_at IS NOT NULL
+            ORDER BY published_at
+        """
+        with self._connect() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(query)
+                rows = cur.fetchall()
+        return [
+            HeatmapRow(
+                id=row["id"],
+                title=row["title"],
+                type=row["type"],
+                published_at=row["published_at"],
+                year=row["year"],
+                week=row["week"],
+            )
+            for row in rows
+        ]
+
+    def fetch_content_breakdown(self) -> list[BreakdownRow]:
+        query = """
+            SELECT
+                EXTRACT(YEAR FROM published_at)::int
+                    || '-Q' || EXTRACT(QUARTER FROM published_at)::int AS quarter,
+                type,
+                COUNT(*)::int AS count,
+                COALESCE(AVG(word_count)::int, 0) AS avg_word_count
+            FROM content
+            WHERE published_at IS NOT NULL
+            GROUP BY EXTRACT(YEAR FROM published_at),
+                     EXTRACT(QUARTER FROM published_at),
+                     type
+            ORDER BY EXTRACT(YEAR FROM published_at),
+                     EXTRACT(QUARTER FROM published_at),
+                     type
+        """
+        with self._connect() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(query)
+                rows = cur.fetchall()
+        return [
+            BreakdownRow(
+                quarter=row["quarter"],
+                type=row["type"],
+                count=row["count"],
+                avg_word_count=row["avg_word_count"],
+            )
+            for row in rows
+        ]
+
+    def fetch_top_guests(self, limit: int = 20) -> list[GuestRow]:
+        query = """
+            SELECT guest, COUNT(*)::int AS count
+            FROM content
+            WHERE guest IS NOT NULL AND TRIM(guest) <> ''
+            GROUP BY guest
+            ORDER BY count DESC
+            LIMIT %s
+        """
+        with self._connect() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(query, (limit,))
+                rows = cur.fetchall()
+        return [GuestRow(guest=row["guest"], count=row["count"]) for row in rows]
