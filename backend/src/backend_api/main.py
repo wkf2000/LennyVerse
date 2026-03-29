@@ -29,7 +29,7 @@ from backend_api.rag_service import (
 )
 from backend_api.schemas import ContentSummaryResponse, GraphResponse, NodeDetailResponse, NodeType
 from backend_api.stats_repository import StatsRepository
-from backend_api.stats_schemas import TopicTrendsResponse
+from backend_api.stats_schemas import TopicTrendsResponse, HeatmapResponse, ContentBreakdownResponse, TopGuestsResponse
 from backend_api.stats_service import StatsService
 
 logging.basicConfig(
@@ -252,6 +252,27 @@ def get_topic_trends(
     service: Annotated[StatsService, Depends(get_stats_service)],
 ) -> TopicTrendsResponse:
     return service.get_topic_trends()
+
+
+@app.get("/api/stats/heatmap", response_model=HeatmapResponse)
+def get_stats_heatmap(
+    service: Annotated[StatsService, Depends(get_stats_service)],
+) -> HeatmapResponse:
+    return service.get_heatmap_data()
+
+
+@app.get("/api/stats/content-breakdown", response_model=ContentBreakdownResponse)
+def get_stats_content_breakdown(
+    service: Annotated[StatsService, Depends(get_stats_service)],
+) -> ContentBreakdownResponse:
+    return service.get_content_breakdown()
+
+
+@app.get("/api/stats/top-guests", response_model=TopGuestsResponse)
+def get_stats_top_guests(
+    service: Annotated[StatsService, Depends(get_stats_service)],
+) -> TopGuestsResponse:
+    return service.get_top_guests()
 
 
 _FRONTEND_DIST_DIR = Path(__file__).resolve().parents[3] / "frontend" / "dist"
