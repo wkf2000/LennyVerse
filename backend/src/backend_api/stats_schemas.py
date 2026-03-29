@@ -30,3 +30,35 @@ class StatsSummary(BaseModel):
 class TopicTrendsResponse(BaseModel):
     trends: list[TopicTrendItem] = Field(default_factory=list)
     summary: StatsSummary
+
+
+class HeatmapItem(BaseModel):
+    year: int
+    week: int
+    type: str
+    title: str
+    published_at: str
+
+
+class HeatmapResponse(BaseModel):
+    items: list[HeatmapItem] = Field(default_factory=list)
+
+
+class ContentBreakdownItem(BaseModel):
+    quarter: str
+    type: str
+    count: int
+    avg_word_count: int
+
+
+class ContentBreakdownResponse(BaseModel):
+    breakdown: list[ContentBreakdownItem] = Field(default_factory=list)
+
+
+class GuestCount(BaseModel):
+    guest: str
+    count: int
+
+
+class TopGuestsResponse(BaseModel):
+    guests: list[GuestCount] = Field(default_factory=list)
