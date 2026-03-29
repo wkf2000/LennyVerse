@@ -177,7 +177,7 @@ class StatsRepository:
             for row in rows
         ]
 
-    def fetch_top_guests(self, limit: int = 20) -> list[GuestRow]:
+    def fetch_top_guests(self, limit: int = 10) -> list[GuestRow]:
         query = """
             SELECT guest, COUNT(*)::int AS count
             FROM content

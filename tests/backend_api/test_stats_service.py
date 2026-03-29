@@ -42,7 +42,7 @@ class FakeStatsRepository(StatsRepository):
     def fetch_content_breakdown(self) -> list[BreakdownRow]:
         return self._breakdown_rows
 
-    def fetch_top_guests(self, limit: int = 20) -> list[GuestRow]:
+    def fetch_top_guests(self, limit: int = 10) -> list[GuestRow]:
         return self._guest_rows
 
 
