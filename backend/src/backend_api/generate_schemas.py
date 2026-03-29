@@ -124,3 +124,11 @@ class GenerateDonePayload(BaseModel):
 class GenerateErrorPayload(BaseModel):
     message: str
     retriable: bool
+
+
+class InfographicRequest(BaseModel):
+    syllabus: GeneratedSyllabus
+
+
+class InfographicResponse(BaseModel):
+    html: str

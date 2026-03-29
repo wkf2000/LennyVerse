@@ -9,6 +9,16 @@ from typing import Any, TypedDict
 
 logger = logging.getLogger("lennyverse.generate")
 
+_MARKDOWN_FENCE_RE = re.compile(r"^\s*```(?:json)?\s*\n?(.*?)\n?\s*```\s*$", re.DOTALL)
+
+
+def _strip_markdown_fences(text: str) -> str:
+    m = _MARKDOWN_FENCE_RE.match(text.strip())
+    if m:
+        return m.group(1)
+    return text
+
+
 from langgraph.graph import END, START, StateGraph
 from openai import OpenAI
 
@@ -350,6 +360,42 @@ class GenerateService:
         self._embed_query = embed_query or _default_embed_query(settings)
         self._llm_json_call = llm_json_call or _default_llm_json_call(settings)
 
+    def generate_infographic(self, syllabus: "GeneratedSyllabus") -> str:
+        weeks_summary = []
+        for week in syllabus.weeks:
+            weeks_summary.append(
+                f"Week {week.week_number}: {week.theme}\n"
+                f"Objectives: {', '.join(week.learning_objectives)}\n"
+                f"Key takeaways: {', '.join(week.key_takeaways)}"
+            )
+        syllabus_text = (
+            f"Course: {syllabus.topic}\n"
+            f"Difficulty: {syllabus.difficulty}\n"
+            f"Total weeks: {len(syllabus.weeks)}\n\n"
+            + "\n\n".join(weeks_summary)
+        )
+
+        system_prompt = (
+            "Generate a clean, professional infographic layout in HTML5/CSS3. "
+            "Style: Modern Swiss-design, beige/off-white background, dark charcoal and gold accents. "
+            "Layout: Asymmetric grid with a large serif headline, numeric callout boxes "
+            "(e.g., '4h', '20-40'), and structured sections labeled 01-04 using rounded badges. "
+            "Use high-contrast blocks and a clean sans-serif for body text.\n\n"
+            "The output must be a single, complete, self-contained HTML document with all CSS inlined "
+            "in a <style> tag. Do not use any external resources, scripts, or images. "
+            "Do not wrap the output in markdown fences. Return only the raw HTML."
+        )
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Create an infographic for this course syllabus:\n\n{syllabus_text}"},
+        ]
+        logger.info("generate_infographic: calling LLM for infographic HTML")
+        raw = self._llm_json_call(messages, self._settings.openai_model, None)
+        html = _strip_markdown_fences(raw).strip()
+        logger.info("generate_infographic: generated %d chars of HTML", len(html))
+        return html
+
     def generate_outline(self, topic: str, num_weeks: int, difficulty: str) -> OutlineResponse:
         logger.info("generate_outline started: topic=%r, num_weeks=%d, difficulty=%s", topic, num_weeks, difficulty)
         embedding = self._embed_query(topic)
@@ -458,8 +504,9 @@ class GenerateService:
         logger.info("_generate_week %d: calling LLM for week content", week.week_number)
         raw = self._llm_json_call(messages, self._settings.openai_model, {"type": "json_object"})
         logger.debug("_generate_week %d: LLM response length=%d chars", week.week_number, len(raw))
+        cleaned = _strip_markdown_fences(raw)
         try:
-            loaded = json.loads(raw)
+            loaded = json.loads(cleaned)
         except json.JSONDecodeError:
             logger.error("_generate_week %d: JSON parse failed, raw response: %.500s", week.week_number, raw)
             raise
@@ -540,7 +587,7 @@ class GenerateService:
         current = raw
         for json_attempt in range(2):
             try:
-                return json.loads(current)
+                return json.loads(_strip_markdown_fences(current))
             except json.JSONDecodeError as exc:
                 if json_attempt == 1:
                     logger.error("Outline JSON repair also failed: %s, raw: %.500s", exc, current)
@@ -569,7 +616,7 @@ class GenerateService:
         current = raw
         for json_attempt in range(2):
             try:
-                parsed = json.loads(current)
+                parsed = json.loads(_strip_markdown_fences(current))
                 return parsed
             except json.JSONDecodeError as exc:
                 if json_attempt == 1:

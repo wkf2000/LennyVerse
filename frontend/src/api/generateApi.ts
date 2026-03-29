@@ -19,6 +19,19 @@ export interface GenerateStreamHandlers {
   onDone?: (payload: GenerateDonePayload) => void;
 }
 
+export async function postInfographic(syllabus: import("../types/generate").GeneratedSyllabus): Promise<string> {
+  const response = await fetch(`${API_BASE_URL}/api/generate/infographic`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ syllabus }),
+  });
+  if (!response.ok) {
+    throw new Error(`Infographic generation failed (${response.status})`);
+  }
+  const data = (await response.json()) as { html: string };
+  return data.html;
+}
+
 export async function postOutline(request: OutlineRequest): Promise<OutlineResponse> {
   const response = await fetch(`${API_BASE_URL}/api/generate/outline`, {
     method: "POST",

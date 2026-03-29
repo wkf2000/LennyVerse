@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend_api.config import Settings, get_settings
-from backend_api.generate_schemas import ExecuteRequest, OutlineRequest, OutlineResponse
+from backend_api.generate_schemas import ExecuteRequest, InfographicRequest, InfographicResponse, OutlineRequest, OutlineResponse
 from backend_api.generate_service import GenerateService
 from backend_api.llm_client import ChatCompletionStreamer, OpenAiCompatibleChatStreamer
 from backend_api.graph_repository import GraphRepository
@@ -236,6 +236,15 @@ def post_generate_execute(
             yield format_sse_event(event_name, payload)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app.post("/api/generate/infographic", response_model=InfographicResponse)
+def post_generate_infographic(
+    body: InfographicRequest,
+    service: Annotated[GenerateService, Depends(get_generate_service)],
+) -> InfographicResponse:
+    html = service.generate_infographic(syllabus=body.syllabus)
+    return InfographicResponse(html=html)
 
 
 @app.get("/api/stats/topic-trends", response_model=TopicTrendsResponse)
