@@ -391,7 +391,7 @@ class GenerateService:
             {"role": "user", "content": f"Create an infographic for this course syllabus:\n\n{syllabus_text}"},
         ]
         logger.info("generate_infographic: calling LLM for infographic HTML")
-        raw = self._llm_json_call(messages, self._settings.openai_model, None)
+        raw = self._llm_json_call(messages, self._settings.openai_model_slow, None)
         html = _strip_markdown_fences(raw).strip()
         logger.info("generate_infographic: generated %d chars of HTML", len(html))
         return html
@@ -416,8 +416,8 @@ class GenerateService:
             {"role": "system", "content": _build_outline_system_prompt(num_weeks, difficulty)},
             {"role": "user", "content": user_prompt},
         ]
-        logger.info("Calling LLM for outline generation (model=%s)", self._settings.openai_model)
-        raw_json = self._llm_json_call(messages, self._settings.openai_model, {"type": "json_object"})
+        logger.info("Calling LLM for outline generation (model=%s)", self._settings.openai_model_slow)
+        raw_json = self._llm_json_call(messages, self._settings.openai_model_slow, {"type": "json_object"})
         logger.debug("LLM outline response length: %d chars", len(raw_json))
         parsed = self._outline_json_loads_with_one_repair(
             raw_json, num_weeks, difficulty, user_prompt
@@ -502,7 +502,7 @@ class GenerateService:
             },
         ]
         logger.info("_generate_week %d: calling LLM for week content", week.week_number)
-        raw = self._llm_json_call(messages, self._settings.openai_model, {"type": "json_object"})
+        raw = self._llm_json_call(messages, self._settings.openai_model_slow, {"type": "json_object"})
         logger.debug("_generate_week %d: LLM response length=%d chars", week.week_number, len(raw))
         cleaned = _strip_markdown_fences(raw)
         try:
@@ -601,7 +601,7 @@ class GenerateService:
                     {"role": "user", "content": user_prompt},
                 ]
                 current = self._llm_json_call(
-                    repair_messages, self._settings.openai_model, {"type": "json_object"}
+                    repair_messages, self._settings.openai_model_slow, {"type": "json_object"}
                 )
                 logger.debug("Outline repair response length: %d chars", len(current))
         raise RuntimeError("outline JSON repair loop exhausted")
@@ -631,7 +631,7 @@ class GenerateService:
                     {"role": "user", "content": weeks_content},
                 ]
                 current = self._llm_json_call(
-                    repair_messages, self._settings.openai_model, {"type": "json_object"}
+                    repair_messages, self._settings.openai_model_slow, {"type": "json_object"}
                 )
                 logger.debug("Quiz repair response length: %d chars", len(current))
         raise RuntimeError("quiz JSON repair loop exhausted")
@@ -668,7 +668,7 @@ class GenerateService:
             {"role": "user", "content": weeks_content},
         ]
         logger.info("_generate_quiz: calling LLM for quiz generation")
-        raw = self._llm_json_call(messages, self._settings.openai_model, {"type": "json_object"})
+        raw = self._llm_json_call(messages, self._settings.openai_model_slow, {"type": "json_object"})
         logger.debug("_generate_quiz: LLM response length=%d chars", len(raw))
         parsed = self._quiz_json_loads_with_one_repair(raw, weeks_content, topic, difficulty)
         coerced = _coerce_quiz_payload(parsed, generated_weeks)
@@ -697,7 +697,7 @@ class GenerateService:
                 ]
                 try:
                     raw_retry = self._llm_json_call(
-                        retry_messages, self._settings.openai_model, {"type": "json_object"}
+                        retry_messages, self._settings.openai_model_slow, {"type": "json_object"}
                     )
                     parsed_retry = self._quiz_json_loads_with_one_repair(
                         raw_retry, weeks_content, topic, difficulty

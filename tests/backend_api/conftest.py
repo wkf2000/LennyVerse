@@ -52,6 +52,8 @@ def unset_rag_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "OPENAI_API_BASE",
         "OPENAI_API_KEY",
         "OPENAI_MODEL",
+        "OPENAI_MODEL_FAST",
+        "OPENAI_MODEL_SLOW",
         "OLLAMA_EMBED_BASE_URL",
         "EMBEDDING_API_KEY",
         "EMBEDDING_MODEL",

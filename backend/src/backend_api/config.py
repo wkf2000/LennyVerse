@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Self
 
-from pydantic import Field, computed_field
+from pydantic import Field, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 def _parse_cors_origins_csv(raw: str) -> list[str]:
@@ -17,7 +18,18 @@ class Settings(BaseSettings):
 
     openai_api_base: str | None = Field(default=None, alias="OPENAI_API_BASE")
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
-    openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
+    openai_model_fast: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL_FAST")
+    openai_model_slow: str = Field(default="gpt-4o", alias="OPENAI_MODEL_SLOW")
+    openai_model: str | None = Field(default=None, alias="OPENAI_MODEL")
+
+    @model_validator(mode="after")
+    def _apply_legacy_openai_model(self) -> Self:
+        """If OPENAI_MODEL is set, use it for both fast and slow (legacy single-model setups)."""
+        if self.openai_model is None:
+            return self
+        object.__setattr__(self, "openai_model_fast", self.openai_model)
+        object.__setattr__(self, "openai_model_slow", self.openai_model)
+        return self
 
     # Query-time embeddings: OpenAI-compatible API at Ollama (same as data pipeline ingest).
     ollama_embed_base_url: str = Field(

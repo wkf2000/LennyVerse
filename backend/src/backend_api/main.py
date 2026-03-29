@@ -47,7 +47,9 @@ settings = get_settings()
 logger.info("Configuration loaded")
 logger.info("  Database URL: %s", "configured" if settings.supabase_db_url else "NOT SET")
 logger.info("  OpenAI API base: %s", settings.openai_api_base or "not configured")
-logger.info("  OpenAI model: %s", settings.openai_model)
+logger.info("  OpenAI models: fast (RAG chat)=%s, slow (generate)=%s", settings.openai_model_fast, settings.openai_model_slow)
+if settings.openai_model:
+    logger.info("  OPENAI_MODEL legacy override is set (both models use this value)")
 logger.info("  Embedding model: %s", settings.embedding_model)
 logger.info("  Embedding base URL: %s", settings.ollama_embed_base_url)
 logger.info("  RAG default k: %d, max k: %d", settings.rag_default_k, settings.rag_max_k)
@@ -203,7 +205,7 @@ def post_chat(
             normalized,
             llm=llm,
             chat_timeout_seconds=app_settings.rag_chat_timeout_seconds,
-            model=app_settings.openai_model,
+            model=app_settings.openai_model_fast,
         )
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
