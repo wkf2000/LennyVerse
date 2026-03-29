@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from collections.abc import Callable, Iterator
 from typing import Any, TypedDict
+
+logger = logging.getLogger("lennyverse.generate")
 
 from langgraph.graph import END, START, StateGraph
 from openai import OpenAI
@@ -348,20 +351,28 @@ class GenerateService:
         self._llm_json_call = llm_json_call or _default_llm_json_call(settings)
 
     def generate_outline(self, topic: str, num_weeks: int, difficulty: str) -> OutlineResponse:
+        logger.info("generate_outline started: topic=%r, num_weeks=%d, difficulty=%s", topic, num_weeks, difficulty)
         embedding = self._embed_query(topic)
+        logger.debug("Embedding computed for topic=%r", topic)
         hits = self._repository.search_similar_chunks(
             query_embedding=embedding,
             k=self._settings.generate_outline_k,
         )
         unique_content_ids = {hit.content_id for hit in hits}
         low_coverage = len(unique_content_ids) < LOW_COVERAGE_THRESHOLD
+        logger.info(
+            "Outline retrieval: %d hits, %d unique content IDs, low_coverage=%s",
+            len(hits), len(unique_content_ids), low_coverage,
+        )
 
         user_prompt = _build_outline_user_prompt(topic, hits)
         messages = [
             {"role": "system", "content": _build_outline_system_prompt(num_weeks, difficulty)},
             {"role": "user", "content": user_prompt},
         ]
+        logger.info("Calling LLM for outline generation (model=%s)", self._settings.openai_model)
         raw_json = self._llm_json_call(messages, self._settings.openai_model, {"type": "json_object"})
+        logger.debug("LLM outline response length: %d chars", len(raw_json))
         parsed = self._outline_json_loads_with_one_repair(
             raw_json, num_weeks, difficulty, user_prompt
         )
@@ -376,6 +387,7 @@ class GenerateService:
             )
             for week in weeks_data
         ]
+        logger.info("generate_outline complete: %d weeks produced", len(weeks))
 
         return OutlineResponse(
             topic=topic,
@@ -392,6 +404,7 @@ class GenerateService:
             for reading in week.readings:
                 content_ids.append(reading.content_id)
         unique_content_ids = list(dict.fromkeys(content_ids))
+        logger.info("_build_deep_context: fetching chunks for %d unique content IDs", len(unique_content_ids))
         hits = self._repository.fetch_chunks_by_content_ids(
             content_ids=unique_content_ids,
             max_chunks_per_content=self._settings.generate_retrieval_k_per_reading,
@@ -399,9 +412,11 @@ class GenerateService:
         grouped: dict[str, list[RagChunkHit]] = {cid: [] for cid in unique_content_ids}
         for hit in hits:
             grouped.setdefault(hit.content_id, []).append(hit)
+        logger.info("_build_deep_context: retrieved %d total chunks across %d content IDs", len(hits), len(grouped))
         return grouped
 
     def _generate_week(self, week: WeekOutline, deep_chunks: dict[str, list[RagChunkHit]], difficulty: str) -> GeneratedWeek:
+        logger.info("_generate_week: week=%d theme=%r, %d readings", week.week_number, week.theme, len(week.readings))
         chunk_lines: list[str] = []
         for reading in week.readings:
             hits = deep_chunks.get(reading.content_id, [])
@@ -409,6 +424,7 @@ class GenerateService:
                 cite = stable_chunk_result_id(hit.content_id, hit.chunk_index)
                 chunk_lines.append(f"[cite:{cite}] title={hit.title!r} excerpt={hit.chunk_text!r}")
         chunks_block = "\n".join(chunk_lines) if chunk_lines else "(no chunks available)"
+        logger.debug("_generate_week %d: %d chunk lines for LLM prompt", week.week_number, len(chunk_lines))
         outline_readings = "\n".join(
             f"- {r.title} ({r.content_type}) id={r.content_id}" for r in week.readings
         )
@@ -439,10 +455,13 @@ class GenerateService:
                 ),
             },
         ]
+        logger.info("_generate_week %d: calling LLM for week content", week.week_number)
         raw = self._llm_json_call(messages, self._settings.openai_model, {"type": "json_object"})
+        logger.debug("_generate_week %d: LLM response length=%d chars", week.week_number, len(raw))
         try:
             loaded = json.loads(raw)
         except json.JSONDecodeError:
+            logger.error("_generate_week %d: JSON parse failed, raw response: %.500s", week.week_number, raw)
             raise
         parsed = loaded if isinstance(loaded, dict) else {}
 
@@ -496,7 +515,7 @@ class GenerateService:
                 for ref in week.readings
             ]
 
-        return GeneratedWeek(
+        result = GeneratedWeek(
             week_number=week.week_number,
             theme=week.theme,
             status="complete",
@@ -505,6 +524,11 @@ class GenerateService:
             readings=generated_readings,
             key_takeaways=_as_list_of_str(parsed.get("key_takeaways")),
         )
+        logger.info(
+            "_generate_week %d complete: %d objectives, %d readings, %d takeaways",
+            week.week_number, len(result.learning_objectives), len(result.readings), len(result.key_takeaways),
+        )
+        return result
 
     def _outline_json_loads_with_one_repair(
         self,
@@ -517,9 +541,11 @@ class GenerateService:
         for json_attempt in range(2):
             try:
                 return json.loads(current)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as exc:
                 if json_attempt == 1:
+                    logger.error("Outline JSON repair also failed: %s, raw: %.500s", exc, current)
                     raise
+                logger.warning("Outline JSON parse failed (attempt %d): %s, attempting repair", json_attempt + 1, exc)
                 repair_messages = [
                     {
                         "role": "system",
@@ -530,6 +556,7 @@ class GenerateService:
                 current = self._llm_json_call(
                     repair_messages, self._settings.openai_model, {"type": "json_object"}
                 )
+                logger.debug("Outline repair response length: %d chars", len(current))
         raise RuntimeError("outline JSON repair loop exhausted")
 
     def _quiz_json_loads_with_one_repair(
@@ -544,9 +571,11 @@ class GenerateService:
             try:
                 parsed = json.loads(current)
                 return parsed
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as exc:
                 if json_attempt == 1:
+                    logger.error("Quiz JSON repair also failed: %s, raw: %.500s", exc, current)
                     raise
+                logger.warning("Quiz JSON parse failed (attempt %d): %s, attempting repair", json_attempt + 1, exc)
                 repair_messages = [
                     {
                         "role": "system",
@@ -557,9 +586,11 @@ class GenerateService:
                 current = self._llm_json_call(
                     repair_messages, self._settings.openai_model, {"type": "json_object"}
                 )
+                logger.debug("Quiz repair response length: %d chars", len(current))
         raise RuntimeError("quiz JSON repair loop exhausted")
 
     def _generate_quiz(self, topic: str, difficulty: str, generated_weeks: list[GeneratedWeek]) -> GeneratedQuiz:
+        logger.info("_generate_quiz: topic=%r, difficulty=%s, %d weeks", topic, difficulty, len(generated_weeks))
         weeks_block = []
         for week in generated_weeks:
             weeks_block.append(
@@ -589,15 +620,24 @@ class GenerateService:
             },
             {"role": "user", "content": weeks_content},
         ]
+        logger.info("_generate_quiz: calling LLM for quiz generation")
         raw = self._llm_json_call(messages, self._settings.openai_model, {"type": "json_object"})
+        logger.debug("_generate_quiz: LLM response length=%d chars", len(raw))
         parsed = self._quiz_json_loads_with_one_repair(raw, weeks_content, topic, difficulty)
         coerced = _coerce_quiz_payload(parsed, generated_weeks)
         try:
-            return GeneratedQuiz.model_validate(coerced)
-        except Exception:  # noqa: BLE001
+            quiz = GeneratedQuiz.model_validate(coerced)
+            logger.info(
+                "_generate_quiz: validated successfully, %d MC + %d SA questions",
+                len(quiz.multiple_choice), len(quiz.short_answer),
+            )
+            return quiz
+        except Exception as validate_exc:  # noqa: BLE001
+            logger.warning("_generate_quiz: validation failed: %s, attempting recovery", validate_exc)
             retry_counts = _quiz_int_counts_for_retry(parsed) if isinstance(parsed, dict) else None
             if retry_counts is not None:
                 mc_n, sa_n = retry_counts
+                logger.info("_generate_quiz: detected int-count payload (mc=%d, sa=%d), retrying with explicit prompt", mc_n, sa_n)
                 retry_messages = [
                     {
                         "role": "system",
@@ -617,10 +657,12 @@ class GenerateService:
                     )
                     coerced_retry = _coerce_quiz_payload(parsed_retry, generated_weeks)
                     quiz_retry = GeneratedQuiz.model_validate(coerced_retry)
+                    logger.info("_generate_quiz: retry succeeded, %d MC + %d SA questions", len(quiz_retry.multiple_choice), len(quiz_retry.short_answer))
                     return quiz_retry
-                except Exception:  # noqa: BLE001
-                    pass
+                except Exception as retry_exc:  # noqa: BLE001
+                    logger.warning("_generate_quiz: retry also failed: %s", retry_exc)
 
+            logger.warning("_generate_quiz: falling back to placeholder quiz questions")
             mc_raw = parsed.get("multiple_choice") if isinstance(parsed, dict) else None
             sa_raw = parsed.get("short_answer") if isinstance(parsed, dict) else None
             mc_count = mc_raw if isinstance(mc_raw, int) else 0
@@ -677,6 +719,11 @@ class GenerateService:
         difficulty: str,
         approved_outline: list[WeekOutline],
     ) -> Iterator[tuple[str, dict[str, Any]]]:
+        logger.info(
+            "iter_generate_sse_events started: topic=%r, num_weeks=%d, difficulty=%s, outline_weeks=%d",
+            topic, num_weeks, difficulty, len(approved_outline),
+        )
+
         class SyllabusState(TypedDict):
             topic: str
             num_weeks: int
@@ -851,6 +898,7 @@ class GenerateService:
             for update in graph.stream(initial_state):
                 elapsed = time.perf_counter() - started
                 if elapsed > float(self._settings.generate_timeout_seconds):
+                    logger.error("Generation timed out after %.1fs (limit=%ds)", elapsed, self._settings.generate_timeout_seconds)
                     yield "error", {"message": "Generation timed out", "retriable": True}
                     break
 
@@ -865,6 +913,7 @@ class GenerateService:
                         total_weeks = len(partial_result.get("syllabus", {}).get("weeks", []))
                         quiz_questions = partial_result.get("quiz", {}).get("total_questions", 0)
         except Exception as exc:  # noqa: BLE001
+            logger.exception("Generation pipeline failed: %s", exc)
             yield "error", {"message": f"Generation failed: {exc}", "retriable": True}
 
         if partial_result is None:
@@ -882,9 +931,14 @@ class GenerateService:
                 },
             }
 
+        total_duration_ms = int((time.perf_counter() - started) * 1000)
+        logger.info(
+            "iter_generate_sse_events complete: %d weeks, %d quiz questions, %dms total",
+            total_weeks, quiz_questions, total_duration_ms,
+        )
         yield "result", partial_result
         yield "done", {
-            "total_duration_ms": int((time.perf_counter() - started) * 1000),
+            "total_duration_ms": total_duration_ms,
             "weeks_generated": total_weeks,
             "quiz_questions": quiz_questions,
         }
