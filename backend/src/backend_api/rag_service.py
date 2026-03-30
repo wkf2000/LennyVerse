@@ -362,9 +362,6 @@ class RagService:
             "service to others, pursuit of justice, and forming people for others. "
             "Frame it as a reflective prompt or actionable suggestion for educators and learners.]\n\n"
             "Rules for this section:\n"
-            "- Only include it when genuinely relevant — do not force it on purely tactical or "
-            "technical questions (e.g., 'what metrics should I track' does not need it, but "
-            "'how should leaders handle layoffs' does).\n"
             "- Keep it concise and thoughtful, never preachy.\n"
             "- Do not cite sources in this section — it is a values-based reflection, not a factual claim."
         )
