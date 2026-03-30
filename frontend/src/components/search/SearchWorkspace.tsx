@@ -18,7 +18,7 @@ const STARTER_QUESTIONS: readonly string[] = [
   "What are the most common paths for a new grad to break into product management?",
   "How can I use AI to help me practice and prepare for PM interviews?",
   "What is the 'Ladder versus Map' career framework?",
-  "How can I empirically measure if my product has achieved product-market fit (PMF)?",
+  "what are the frameworks can be used for task prioritization?",
 ];
 
 export interface SearchWorkspaceProps {

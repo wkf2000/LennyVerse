@@ -70,6 +70,7 @@ class OpenAiCompatibleChatStreamer:
             stream = scoped.chat.completions.create(
                 model=model,
                 messages=messages,
+                temperature=0.7,
                 stream=True,
                 stream_options={"include_usage": True},
             )
