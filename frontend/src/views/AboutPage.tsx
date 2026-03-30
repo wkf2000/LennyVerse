@@ -7,7 +7,7 @@ export default function AboutPage(): JSX.Element {
           A teaching assistant built on Lenny Rachitsky&apos;s archive
         </h1>
         <p className="mt-3 max-w-3xl text-sm text-slate-600">
-          Explore the corpus visually, ask grounded questions with citations, and generate syllabus and quiz drafts
+          Explore the corpus visually, ask grounded questions with citations, and generate teaching modules and assessments drafts
           that trace back to real episodes and newsletters
         </p>
       </header>
