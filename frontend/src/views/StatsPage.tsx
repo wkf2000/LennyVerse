@@ -5,17 +5,14 @@ import {
   fetchTopicTrends,
   fetchHeatmapData,
   fetchContentBreakdown,
-  fetchTopGuests,
 } from "../api/statsApi";
 import type {
   TopicTrendsResponse,
   HeatmapResponse,
   ContentBreakdownResponse,
-  TopGuestsResponse,
 } from "../api/statsApi";
 import HeatmapChart from "../components/stats/HeatmapChart";
 import ContentBreakdownChart from "../components/stats/ContentBreakdownChart";
-import GuestLeaderboard from "../components/stats/GuestLeaderboard";
 
 const TOPIC_COLORS: Record<string, string> = {
   ai: "#6366f1",
@@ -41,7 +38,6 @@ export default function StatsPage(): JSX.Element {
   const [trendsData, setTrendsData] = useState<TopicTrendsResponse | null>(null);
   const [heatmapData, setHeatmapData] = useState<HeatmapResponse | null>(null);
   const [breakdownData, setBreakdownData] = useState<ContentBreakdownResponse | null>(null);
-  const [guestsData, setGuestsData] = useState<TopGuestsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | undefined>();
   const [selectedTopics, setSelectedTopics] = useState<Set<string>>(new Set());
@@ -59,9 +55,8 @@ export default function StatsPage(): JSX.Element {
       fetchTopicTrends().catch(() => null),
       fetchHeatmapData().catch(() => null),
       fetchContentBreakdown().catch(() => null),
-      fetchTopGuests().catch(() => null),
     ])
-      .then(([trends, heatmap, breakdown, guests]) => {
+      .then(([trends, heatmap, breakdown]) => {
         if (cancelled) return;
         if (trends) {
           setTrendsData(trends);
@@ -70,9 +65,8 @@ export default function StatsPage(): JSX.Element {
         }
         if (heatmap) setHeatmapData(heatmap);
         if (breakdown) setBreakdownData(breakdown);
-        if (guests) setGuestsData(guests);
 
-        if (!trends && !heatmap && !breakdown && !guests) {
+        if (!trends && !heatmap && !breakdown) {
           setError("Failed to load statistics.");
         }
       })
@@ -295,12 +289,32 @@ export default function StatsPage(): JSX.Element {
       <header className="mb-6">
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-700">LennyVerse</p>
         <h1 className="mt-2 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
-          Content DNA Stats Dashboard
+          About LennyVerse
         </h1>
         <p className="mt-3 max-w-3xl text-sm text-slate-600">
-          Publishing activity, content breakdown, top guests, and topic trends across {corpusLabel}
+          A knowledge engine built on Lenny Rachitsky&apos;s archive of 638 podcast episodes and 350+ newsletter posts
         </p>
       </header>
+
+      {/* Features */}
+      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-xl border border-indigo-100 bg-white/90 p-5 shadow-sm shadow-indigo-100/70">
+          <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">Playbook</p>
+          <p className="mt-2 text-sm text-slate-700">Get an actionable, personalized plan grounded in Lenny&apos;s archive — tailored to your role, stage, and challenge.</p>
+        </div>
+        <div className="rounded-xl border border-indigo-100 bg-white/90 p-5 shadow-sm shadow-indigo-100/70">
+          <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">Graph</p>
+          <p className="mt-2 text-sm text-slate-700">Explore the knowledge graph — connections between guests, topics, frameworks, and episodes visualized interactively.</p>
+        </div>
+        <div className="rounded-xl border border-indigo-100 bg-white/90 p-5 shadow-sm shadow-indigo-100/70">
+          <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">Ask</p>
+          <p className="mt-2 text-sm text-slate-700">Ask anything across the entire archive and get grounded, cited answers drawn directly from episode and newsletter content.</p>
+        </div>
+        <div className="rounded-xl border border-indigo-100 bg-white/90 p-5 shadow-sm shadow-indigo-100/70">
+          <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">About</p>
+          <p className="mt-2 text-sm text-slate-700">Publishing activity, content breakdown, and topic trends across the full Lenny&apos;s Archive corpus.</p>
+        </div>
+      </div>
 
       {error ? (
         <div className="mb-4 rounded-md border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>
@@ -344,31 +358,17 @@ export default function StatsPage(): JSX.Element {
         </div>
       </div>
 
-      {/* Two-column grid: Content Breakdown + Top Guests */}
-      <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Content Breakdown</h2>
-          <div className="rounded-xl border border-indigo-100 bg-white/90 p-4 shadow-sm shadow-indigo-100/70">
-            {breakdownData ? (
-              <ContentBreakdownChart data={breakdownData.breakdown} />
-            ) : (
-              <div className="grid h-48 place-items-center text-sm text-slate-500">
-                No content breakdown data available.
-              </div>
-            )}
-          </div>
-        </div>
-        <div>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Top Guests</h2>
-          <div className="rounded-xl border border-indigo-100 bg-white/90 p-4 shadow-sm shadow-indigo-100/70">
-            {guestsData ? (
-              <GuestLeaderboard data={guestsData.guests} />
-            ) : (
-              <div className="grid h-48 place-items-center text-sm text-slate-500">
-                No guest data available.
-              </div>
-            )}
-          </div>
+      {/* Content Breakdown */}
+      <div className="mb-6">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Content Breakdown</h2>
+        <div className="rounded-xl border border-indigo-100 bg-white/90 p-4 shadow-sm shadow-indigo-100/70">
+          {breakdownData ? (
+            <ContentBreakdownChart data={breakdownData.breakdown} />
+          ) : (
+            <div className="grid h-48 place-items-center text-sm text-slate-500">
+              No content breakdown data available.
+            </div>
+          )}
         </div>
       </div>
 

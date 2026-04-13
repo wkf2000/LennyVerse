@@ -62,7 +62,7 @@ function formatDateInputValue(value: Date): string {
 function getInitialDateRange(): { startDate: string; endDate: string } {
   const end = new Date();
   const start = new Date(end);
-  start.setMonth(start.getMonth() - 2);
+  start.setMonth(start.getMonth() - 6);
   return {
     startDate: formatDateInputValue(start),
     endDate: formatDateInputValue(end),
