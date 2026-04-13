@@ -42,8 +42,9 @@ const PRESETS = [
   },
 ];
 
+/** Backend `OutlineRequest` requires num_weeks >= 2; keep labels honest about phase count. */
 const LENGTH_OPTIONS = [
-  { label: "1-week sprint", value: 1 },
+  { label: "2-week sprint", value: 2 },
   { label: "30-day plan", value: 4 },
   { label: "90-day roadmap", value: 12 },
 ] as const;
