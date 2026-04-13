@@ -212,7 +212,7 @@ def test_service_reuses_embedding_client_across_search_calls(monkeypatch: pytest
             self.embeddings = _FakeEmbeddings()
             type(self).embeddings_api = self.embeddings
 
-    monkeypatch.setattr("backend_api.rag_service.OpenAI", _FakeOpenAI)
+    monkeypatch.setattr("backend_api.llm_client.OpenAI", _FakeOpenAI)
 
     repo = RecordingFakeRagRepository([])
     settings = Settings(_env_file=None)

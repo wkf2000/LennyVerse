@@ -220,7 +220,7 @@ def test_outline_generation_calls_search_and_returns_structured_response(unset_r
     assert isinstance(response.low_coverage, bool)
 
 
-def test_langgraph_generation_produces_syllabus_and_quiz(unset_rag_env) -> None:
+def test_langgraph_generation_produces_syllabus(unset_rag_env) -> None:
     from backend_api.config import Settings
     from backend_api.generate_schemas import ReadingRef, WeekOutline
     from backend_api.generate_service import GenerateService
@@ -281,29 +281,6 @@ def test_langgraph_generation_produces_syllabus_and_quiz(unset_rag_env) -> None:
                     "key_takeaways": ["PLG works when..."],
                 }
             )
-        if "assessment designer" in system.lower() or "quiz" in system.lower():
-            return json.dumps(
-                {
-                    "title": "PLG Quiz",
-                    "total_questions": 1,
-                    "multiple_choice": [
-                        {
-                            "question_number": 1,
-                            "question": "What is PLG?",
-                            "options": [
-                                {"label": "A", "text": "Sales model"},
-                                {"label": "B", "text": "Product-led model"},
-                                {"label": "C", "text": "Pricing model"},
-                                {"label": "D", "text": "Marketing model"},
-                            ],
-                            "correct_answer": "B",
-                            "explanation": "PLG is...",
-                            "source_week": 1,
-                        }
-                    ],
-                    "short_answer": [],
-                }
-            )
         return json.dumps({})
 
     service = GenerateService(
@@ -325,11 +302,11 @@ def test_langgraph_generation_produces_syllabus_and_quiz(unset_rag_env) -> None:
     results = [event for event in events if event[0] == "result"]
     dones = [event for event in events if event[0] == "done"]
 
-    assert len(step_logs) >= 4
+    assert len(step_logs) >= 2
     assert len(results) == 1
     assert len(dones) == 1
     assert results[0][1]["syllabus"]["weeks"][0]["status"] == "complete"
-    assert len(llm_call_log) >= 2
+    assert len(llm_call_log) >= 1
 
 
 def test_langgraph_continues_on_single_week_failure(unset_rag_env) -> None:
@@ -400,9 +377,9 @@ def test_langgraph_continues_on_single_week_failure(unset_rag_env) -> None:
     def failing_week_1_llm(messages: list[dict[str, str]], model: str, response_format: object = None) -> str:
         call_count["n"] += 1
         system = messages[0]["content"].lower()
-        if "week 1" in system:
-            raise RuntimeError("LLM failed for week 1")
-        if "week 2" in system or "course material" in system:
+        if "phase 1" in system:
+            raise RuntimeError("LLM failed for phase 1")
+        if "phase 2" in system or "playbook" in system:
             return json.dumps(
                 {
                     "learning_objectives": ["Obj"],
@@ -418,29 +395,6 @@ def test_langgraph_continues_on_single_week_failure(unset_rag_env) -> None:
                         }
                     ],
                     "key_takeaways": ["Takeaway"],
-                }
-            )
-        if "assessment designer" in system or "quiz" in system:
-            return json.dumps(
-                {
-                    "title": "Quiz",
-                    "total_questions": 1,
-                    "multiple_choice": [
-                        {
-                            "question_number": 1,
-                            "question": "Q?",
-                            "options": [
-                                {"label": "A", "text": "A"},
-                                {"label": "B", "text": "B"},
-                                {"label": "C", "text": "C"},
-                                {"label": "D", "text": "D"},
-                            ],
-                            "correct_answer": "A",
-                            "explanation": "E",
-                            "source_week": 2,
-                        }
-                    ],
-                    "short_answer": [],
                 }
             )
         return json.dumps({})
@@ -471,7 +425,7 @@ def test_langgraph_continues_on_single_week_failure(unset_rag_env) -> None:
     assert "complete" in statuses
 
 
-def test_langgraph_recovers_when_week_readings_are_strings_and_quiz_counts_are_ints(unset_rag_env) -> None:
+def test_langgraph_recovers_when_week_readings_are_strings(unset_rag_env) -> None:
     from backend_api.config import Settings
     from backend_api.generate_schemas import ReadingRef, WeekOutline
     from backend_api.generate_service import GenerateService
@@ -521,15 +475,6 @@ def test_langgraph_recovers_when_week_readings_are_strings_and_quiz_counts_are_i
                     "key_takeaways": "Test willingness to pay",
                 }
             )
-        if "assessment designer" in system or "quiz" in system:
-            return json.dumps(
-                {
-                    "title": "Pricing Quiz",
-                    "total_questions": 8,
-                    "multiple_choice": 6,
-                    "short_answer": 2,
-                }
-            )
         return json.dumps({})
 
     service = GenerateService(
@@ -551,322 +496,6 @@ def test_langgraph_recovers_when_week_readings_are_strings_and_quiz_counts_are_i
     assert len(results) == 1
     payload = results[0][1]
     assert payload["syllabus"]["weeks"][0]["status"] == "complete"
-    assert isinstance(payload["quiz"]["multiple_choice"], list)
-    assert isinstance(payload["quiz"]["short_answer"], list)
-    assert len(payload["quiz"]["multiple_choice"]) == 6
-    assert len(payload["quiz"]["short_answer"]) == 2
-
-
-def test_langgraph_quiz_retries_after_int_counts_then_returns_real_questions(unset_rag_env) -> None:
-    from backend_api.config import Settings
-    from backend_api.generate_schemas import ReadingRef, WeekOutline
-    from backend_api.generate_service import GenerateService
-
-    outline = [
-        WeekOutline(
-            week_number=1,
-            theme="Pricing Foundations",
-            description="Desc",
-            readings=[
-                ReadingRef(
-                    content_id="newsletter::pricing-101",
-                    title="Pricing 101",
-                    content_type="newsletter",
-                    relevance_summary="Core",
-                )
-            ],
-        )
-    ]
-    repo = FakeRepoWithChunkFetch(
-        [
-            RagChunkHit(
-                chunk_id="ch-1",
-                content_id="newsletter::pricing-101",
-                chunk_index=0,
-                chunk_text="Pricing text",
-                title="Pricing 101",
-                guest=None,
-                published_at=None,
-                tags=[],
-                content_type="newsletter",
-                embedding_distance=0.0,
-            )
-        ]
-    )
-    settings = Settings(_env_file=None)
-
-    valid_quiz = {
-        "title": "Real Quiz",
-        "total_questions": 3,
-        "multiple_choice": [
-            {
-                "question_number": 1,
-                "question": "Mc one?",
-                "options": [
-                    {"label": "A", "text": "x"},
-                    {"label": "B", "text": "y"},
-                    {"label": "C", "text": "z"},
-                    {"label": "D", "text": "w"},
-                ],
-                "correct_answer": "A",
-                "explanation": "Because.",
-                "source_week": 1,
-            },
-            {
-                "question_number": 2,
-                "question": "Mc two?",
-                "options": [
-                    {"label": "A", "text": "x"},
-                    {"label": "B", "text": "y"},
-                    {"label": "C", "text": "z"},
-                    {"label": "D", "text": "w"},
-                ],
-                "correct_answer": "B",
-                "explanation": "Because 2.",
-                "source_week": 1,
-            },
-        ],
-        "short_answer": [
-            {
-                "question_number": 3,
-                "question": "Explain?",
-                "model_answer": "Answer.",
-                "grading_guidance": "Grade.",
-                "source_week": [1],
-            },
-        ],
-    }
-
-    def two_phase_quiz_llm(messages: list[dict[str, str]], model: str, response_format: object = None) -> str:
-        del model, response_format
-        system = messages[0]["content"]
-        low = system.lower()
-        if "course material for week" in low:
-            return json.dumps(
-                {
-                    "learning_objectives": ["Understand pricing basics"],
-                    "narrative_summary": "Pricing ties to value [cite:chunk:newsletter::pricing-101:0]",
-                    "readings": [
-                        {
-                            "content_id": "newsletter::pricing-101",
-                            "title": "Pricing 101",
-                            "content_type": "newsletter",
-                            "key_concepts": ["kc"],
-                            "notable_quotes": [],
-                            "discussion_hooks": [],
-                        }
-                    ],
-                    "key_takeaways": ["Test willingness to pay"],
-                }
-            )
-        if "prior reply incorrectly" in system:
-            return json.dumps(valid_quiz)
-        if "assessment designer" in low:
-            return json.dumps(
-                {
-                    "title": "Bad",
-                    "total_questions": 3,
-                    "multiple_choice": 2,
-                    "short_answer": 1,
-                }
-            )
-        return json.dumps({})
-
-    service = GenerateService(
-        repository=repo,  # type: ignore[arg-type]
-        settings=settings,
-        embed_query=lambda _q: [0.0] * 768,
-        llm_json_call=two_phase_quiz_llm,
-    )
-    events = list(
-        service.iter_generate_sse_events(
-            topic="Pricing",
-            num_weeks=1,
-            difficulty="intro",
-            approved_outline=outline,
-        )
-    )
-
-    results = [event for event in events if event[0] == "result"]
-    assert len(results) == 1
-    payload = results[0][1]
-    assert payload["quiz"]["title"] == "Real Quiz"
-    assert len(payload["quiz"]["multiple_choice"]) == 2
-    assert len(payload["quiz"]["short_answer"]) == 1
-    assert payload["quiz"]["multiple_choice"][0]["question"] == "Mc one?"
-    assert "[Fallback]" not in payload["quiz"]["multiple_choice"][0]["question"]
-
-
-def test_langgraph_quiz_repairs_invalid_json_then_validates(unset_rag_env) -> None:
-    from backend_api.config import Settings
-    from backend_api.generate_schemas import ReadingRef, WeekOutline
-    from backend_api.generate_service import GenerateService
-
-    outline = [
-        WeekOutline(
-            week_number=1,
-            theme="Pricing Foundations",
-            description="Desc",
-            readings=[
-                ReadingRef(
-                    content_id="newsletter::pricing-101",
-                    title="Pricing 101",
-                    content_type="newsletter",
-                    relevance_summary="Core",
-                )
-            ],
-        )
-    ]
-    repo = FakeRepoWithChunkFetch(
-        [
-            RagChunkHit(
-                chunk_id="ch-1",
-                content_id="newsletter::pricing-101",
-                chunk_index=0,
-                chunk_text="Pricing text",
-                title="Pricing 101",
-                guest=None,
-                published_at=None,
-                tags=[],
-                content_type="newsletter",
-                embedding_distance=0.0,
-            )
-        ]
-    )
-    settings = Settings(_env_file=None)
-
-    valid_quiz = {
-        "title": "After repair",
-        "total_questions": 2,
-        "multiple_choice": [
-            {
-                "question_number": 1,
-                "question": "Q?",
-                "options": [
-                    {"label": "A", "text": "a"},
-                    {"label": "B", "text": "b"},
-                    {"label": "C", "text": "c"},
-                    {"label": "D", "text": "d"},
-                ],
-                "correct_answer": "A",
-                "explanation": "e",
-                "source_week": 1,
-            }
-        ],
-        "short_answer": [
-            {
-                "question_number": 2,
-                "question": "Q2?",
-                "model_answer": "m",
-                "grading_guidance": "g",
-                "source_week": [1],
-            }
-        ],
-    }
-
-    def repair_llm(messages: list[dict[str, str]], model: str, response_format: object = None) -> str:
-        del model, response_format
-        system = messages[0]["content"]
-        low = system.lower()
-        if "course material for week" in low:
-            return json.dumps(
-                {
-                    "learning_objectives": ["o"],
-                    "narrative_summary": "s [cite:chunk:newsletter::pricing-101:0]",
-                    "readings": [
-                        {
-                            "content_id": "newsletter::pricing-101",
-                            "title": "Pricing 101",
-                            "content_type": "newsletter",
-                            "key_concepts": ["kc"],
-                            "notable_quotes": [],
-                            "discussion_hooks": [],
-                        }
-                    ],
-                    "key_takeaways": ["t"],
-                }
-            )
-        if "rfc 8259" in low:
-            return json.dumps(valid_quiz)
-        if "assessment designer" in low:
-            return "{'invalid': 'single-quoted-json'}"
-        return json.dumps({})
-
-    service = GenerateService(
-        repository=repo,  # type: ignore[arg-type]
-        settings=settings,
-        embed_query=lambda _q: [0.0] * 768,
-        llm_json_call=repair_llm,
-    )
-    events = list(
-        service.iter_generate_sse_events(
-            topic="Pricing",
-            num_weeks=1,
-            difficulty="intro",
-            approved_outline=outline,
-        )
-    )
-
-    results = [event for event in events if event[0] == "result"]
-    assert len(results) == 1
-    payload = results[0][1]
-    assert payload["quiz"]["title"] == "After repair"
-    assert len(payload["quiz"]["multiple_choice"]) == 1
-
-
-def test_coerce_quiz_payload_maps_string_options_and_answer_alias(unset_rag_env) -> None:
-    from backend_api.generate_schemas import GeneratedQuiz, GeneratedReading, GeneratedWeek
-    from backend_api.generate_service import _coerce_quiz_payload
-
-    reading = GeneratedReading(
-        content_id="x",
-        title="t",
-        content_type="newsletter",
-        key_concepts=[],
-        notable_quotes=[],
-        discussion_hooks=[],
-    )
-    weeks = [
-        GeneratedWeek(
-            week_number=1,
-            theme="T",
-            status="complete",
-            learning_objectives=[],
-            narrative_summary="",
-            readings=[reading],
-            key_takeaways=[],
-        )
-    ]
-    raw: dict = {
-        "title": "Sample",
-        "total_questions": 99,
-        "multiple_choice": [
-            {
-                "question": "According to Week 1, which concept?",
-                "options": [
-                    "Maximizing individual output",
-                    "Using team resources as leverage",
-                    "Focusing solely on technical execution",
-                    "Prioritizing stakeholder satisfaction",
-                ],
-                "answer": "Using team resources as leverage",
-            }
-        ],
-        "short_answer": [
-            {
-                "question": "Week 2 explain pricing.",
-                "model_answer": "Value-based.",
-                "grading_guidance": "Cite readings.",
-                "source_week": 2,
-            }
-        ],
-    }
-    coerced = _coerce_quiz_payload(raw, weeks)
-    quiz = GeneratedQuiz.model_validate(coerced)
-    assert quiz.total_questions == 2
-    assert quiz.multiple_choice[0].correct_answer == "B"
-    assert quiz.multiple_choice[0].source_week == 1
-    assert quiz.short_answer[0].source_week == [2]
 
 
 def test_generate_week_coerces_null_or_blank_reading_fields(unset_rag_env) -> None:

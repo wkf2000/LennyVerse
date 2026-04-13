@@ -4,8 +4,8 @@ import { fetchContentSummary, fetchGraph, fetchNodeDetail } from "./api/graphApi
 import GraphCanvas from "./components/GraphCanvas";
 import SearchWorkspace from "./components/search/SearchWorkspace";
 import type { GraphResponse, NodeDetail, NodeType } from "./types/graph";
-import AboutPage from "./views/AboutPage";
 import GenerateWorkspace from "./views/GenerateWorkspace";
+import SharedPlaybook from "./views/SharedPlaybook";
 import StatsPage from "./views/StatsPage";
 
 const INITIAL_GRAPH: GraphResponse = {
@@ -15,24 +15,24 @@ const INITIAL_GRAPH: GraphResponse = {
 
 const NODE_TYPE_ORDER: NodeType[] = ["guest", "topic", "content", "concept"];
 const MAX_RELATED_CONTENT_ITEMS = 5;
-const VIEWS = ["graph", "stats", "explore", "generate", "about"] as const;
-const NAV_VIEWS = ["graph", "stats", "explore", "generate", "about"] as const;
+const VIEWS = ["home", "graph", "explore", "playbook", "stats"] as const;
+const NAV_VIEWS = ["home", "graph", "explore", "playbook", "stats"] as const;
 
 type View = (typeof VIEWS)[number];
 
 const VIEW_PATHS: Record<View, string> = {
-  graph: "/",
+  home: "/",
+  graph: "/graph",
   explore: "/explore",
-  generate: "/generate",
+  playbook: "/playbook",
   stats: "/stats",
-  about: "/about",
 };
 const VIEW_LABELS: Record<View, string> = {
-  graph: "visualization",
+  home: "home",
+  graph: "graph",
   explore: "explore",
-  generate: "generate",
+  playbook: "playbook",
   stats: "stats",
-  about: "about",
 };
 
 function normalizePathname(pathname: string): string {
@@ -49,7 +49,7 @@ function viewFromPathname(pathname: string): View {
       return view;
     }
   }
-  return "graph";
+  return "home";
 }
 
 function formatDateInputValue(value: Date): string {
@@ -83,6 +83,10 @@ export default function App(): JSX.Element {
   const [endDate, setEndDate] = useState(initialDateRange.endDate);
   const [nodeTypes, setNodeTypes] = useState<NodeType[]>(["guest", "topic", "content"]);
   const [activeView, setActiveView] = useState<View>(() => viewFromPathname(window.location.pathname));
+  const [sharedPlaybookSlug] = useState<string | null>(() => {
+    const match = window.location.pathname.match(/^\/playbook\/(.+)$/);
+    return match ? match[1] : null;
+  });
   const [showHeroCopy, setShowHeroCopy] = useState(false);
   const [summaryPopup, setSummaryPopup] = useState<{ title: string; summary: string | null; loading: boolean } | null>(null);
 
@@ -207,13 +211,21 @@ export default function App(): JSX.Element {
     });
   }
 
+  if (sharedPlaybookSlug) {
+    return <SharedPlaybook slug={sharedPlaybookSlug} />;
+  }
+
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#f4f7ff] text-slate-900">
-      <div className="pointer-events-none absolute -left-24 top-20 h-64 w-64 rounded-full bg-indigo-200/50 blur-3xl motion-safe:animate-pulse" />
-      <div className="pointer-events-none absolute -right-20 top-64 h-72 w-72 rounded-full bg-emerald-200/50 blur-3xl motion-safe:animate-pulse" />
-      <div className="pointer-events-none absolute bottom-12 left-1/3 h-56 w-56 rounded-full bg-sky-200/40 blur-3xl motion-safe:animate-pulse" />
+      {activeView !== "home" ? (
+        <>
+          <div className="pointer-events-none absolute -left-24 top-20 h-64 w-64 rounded-full bg-indigo-200/50 blur-3xl motion-safe:animate-pulse" />
+          <div className="pointer-events-none absolute -right-20 top-64 h-72 w-72 rounded-full bg-emerald-200/50 blur-3xl motion-safe:animate-pulse" />
+          <div className="pointer-events-none absolute bottom-12 left-1/3 h-56 w-56 rounded-full bg-sky-200/40 blur-3xl motion-safe:animate-pulse" />
+        </>
+      ) : null}
 
-      <nav className="fixed right-4 top-4 z-50">
+      <nav className={`fixed right-4 top-4 z-50 transition-opacity duration-500 ${activeView === "home" ? "opacity-70 hover:opacity-100" : ""}`}>
         <div className="flex items-center gap-1 rounded-full border border-indigo-200/80 bg-white/90 p-1 shadow-md shadow-indigo-100/70 backdrop-blur">
           {NAV_VIEWS.map((view) => {
             const isActive = activeView === view;
@@ -236,16 +248,59 @@ export default function App(): JSX.Element {
         </div>
       </nav>
 
-      {activeView === "graph" ? (
+      {activeView === "home" ? (
+        <section className="relative h-screen w-full overflow-hidden">
+          {/* Live graph as background */}
+          <div className="absolute inset-0">
+            <GraphCanvas
+              nodes={graphData.nodes}
+              edges={graphData.edges}
+              searchTerm=""
+              onNodeSelect={() => {}}
+            />
+          </div>
+          {/* Dark overlay with hero content */}
+          <div className="absolute inset-0 z-10 flex animate-fadeIn flex-col items-center justify-center bg-slate-950/70">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-300">
+              Lenny Rachitsky&apos;s Archive
+            </p>
+            <h1 className="mt-4 text-center text-5xl font-bold tracking-tight text-white sm:text-7xl">
+              Lenny&apos;s Second Brain
+            </h1>
+            <p className="mt-4 max-w-xl text-center text-lg text-slate-300">
+              638 episodes. One knowledge graph. Your personalized playbook.
+            </p>
+            <div className="mt-10 flex items-center gap-4">
+              <button
+                type="button"
+                className="cursor-pointer rounded-full bg-indigo-600 px-8 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 transition-all hover:bg-indigo-500 hover:-translate-y-0.5"
+                onClick={() => goToView("playbook")}
+              >
+                Build Your Playbook
+              </button>
+              <button
+                type="button"
+                className="cursor-pointer rounded-full border border-white/30 px-8 py-3 text-sm font-semibold text-white transition-all hover:bg-white/10 hover:-translate-y-0.5"
+                onClick={() => goToView("graph")}
+              >
+                Explore Lenny&apos;s Brain
+              </button>
+            </div>
+            <p className="mt-8 text-xs text-slate-400">
+              Built on 638 episodes and 350+ newsletter posts
+            </p>
+          </div>
+        </section>
+      ) : activeView === "graph" ? (
         <section className="mx-auto max-w-7xl px-4 pb-8 pt-24 sm:px-6 lg:px-8">
           <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-700">LennyVerse ✨</p>
               <h1 className="mt-2 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
-                A knowledge graph for modern teaching
+                Lenny&apos;s Brain
               </h1>
               <p className="mt-3 max-w-3xl text-sm text-slate-600">
-                Explore 638 podcasts and newsletters with a graph-first view built for clarity, discovery, and course design
+                Explore connections between guests, topics, and frameworks across 638 episodes
               </p>
             </div>
             <div className="flex gap-5 rounded-full border border-indigo-200 bg-indigo-50/90 px-4 py-2 text-sm text-slate-700 shadow-sm shadow-indigo-100">
@@ -349,10 +404,10 @@ export default function App(): JSX.Element {
                   showHeroCopy ? "opacity-100" : "opacity-0"
                 }`}
               >
-                <p className="text-xs uppercase tracking-[0.2em] text-indigo-200/90">Data Visualization Hero</p>
-                <h2 className="mt-2 text-2xl font-semibold tracking-tight">Lenny&apos;s intellectual universe</h2>
+                <p className="text-xs uppercase tracking-[0.2em] text-indigo-200/90">Knowledge Graph</p>
+                <h2 className="mt-2 text-2xl font-semibold tracking-tight">Lenny&apos;s Brain</h2>
                 <p className="mt-2 text-sm text-indigo-50/80">
-                  638 episodes and posts, one knowledge graph, your next syllabus 🌿
+                  Explore connections between guests, topics, and frameworks across 638 episodes
                 </p>
               </div>
             </div>
@@ -418,21 +473,20 @@ export default function App(): JSX.Element {
               Explore the archive with grounded answers
             </h1>
             <p className="mt-3 max-w-3xl text-sm text-slate-600">
-              Ask a question, discover sources, stream a cited answer, and inspect excerpts side-by-side
+              Ask anything across 638 episodes — get grounded, cited answers
             </p>
           </header>
           <SearchWorkspace />
         </section>
-      ) : activeView === "generate" ? (
+      ) : activeView === "playbook" ? (
         <section className="mx-auto max-w-7xl px-4 pb-8 pt-24 sm:px-6 lg:px-8">
           <header className="mb-6">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-700">LennyVerse 🧠</p>
             <h1 className="mt-2 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
-              Build teaching modules and assessments from the archive
+              Build your personalized playbook
             </h1>
             <p className="mt-3 max-w-3xl text-sm text-slate-600">
-              Generate a course outline first, review it, then run full teaching modules and assessments generation with
-              transparent step logs and grounded sources
+              Get an actionable plan grounded in Lenny&apos;s archive — tailored to your role, stage, and challenge
             </p>
           </header>
           <GenerateWorkspace />
@@ -441,8 +495,6 @@ export default function App(): JSX.Element {
         <section className="mx-auto max-w-7xl px-4 pb-8 pt-24 sm:px-6 lg:px-8">
           <StatsPage />
         </section>
-      ) : activeView === "about" ? (
-        <AboutPage />
       ) : null}
 
       {summaryPopup ? (

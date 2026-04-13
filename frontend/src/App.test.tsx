@@ -41,30 +41,29 @@ describe("App URL view sync", () => {
     expect(window.location.pathname).toBe("/explore");
   });
 
-  it("initial /about path shows About page heading", () => {
-    window.history.pushState({}, "", "/about");
+  it("initial / path shows home landing page", () => {
     render(<App />);
     expect(
       screen.getByRole("heading", {
         level: 1,
-        name: /A teaching assistant built on Lenny Rachitsky's archive/i,
+        name: /Lenny's Second Brain/i,
       }),
     ).toBeInTheDocument();
   });
 
-  it("switching to about updates URL path to /about", () => {
+  it("switching to playbook updates URL path to /playbook", () => {
     render(<App />);
     const nav = screen.getByRole("navigation");
-    fireEvent.click(within(nav).getByRole("button", { name: /^about$/ }));
-    expect(window.location.pathname).toBe("/about");
+    fireEvent.click(within(nav).getByRole("button", { name: /^playbook$/ }));
+    expect(window.location.pathname).toBe("/playbook");
   });
 
-  it("marks About nav button current when on /about", () => {
-    window.history.pushState({}, "", "/about");
+  it("marks playbook nav button current when on /playbook", () => {
+    window.history.pushState({}, "", "/playbook");
     render(<App />);
     const nav = screen.getByRole("navigation");
-    const aboutBtn = within(nav).getByRole("button", { name: /^about$/ });
-    expect(aboutBtn).toHaveAttribute("aria-current", "page");
-    expect(aboutBtn).toHaveClass("bg-slate-900");
+    const playbookBtn = within(nav).getByRole("button", { name: /^playbook$/ });
+    expect(playbookBtn).toHaveAttribute("aria-current", "page");
+    expect(playbookBtn).toHaveClass("bg-slate-900");
   });
 });

@@ -4,6 +4,8 @@ export interface OutlineRequest {
   topic: string;
   num_weeks?: number;
   difficulty?: DifficultyLevel;
+  role?: string;
+  company_stage?: string;
 }
 
 export interface ReadingRef {
@@ -34,6 +36,8 @@ export interface ExecuteRequest {
   num_weeks: number;
   difficulty: DifficultyLevel | string;
   approved_outline: WeekOutline[];
+  role?: string;
+  company_stage?: string;
 }
 
 export interface GeneratedReading {
@@ -61,37 +65,8 @@ export interface GeneratedSyllabus {
   weeks: GeneratedWeek[];
 }
 
-export interface QuizOption {
-  label: string;
-  text: string;
-}
-
-export interface MultipleChoiceQuestion {
-  question_number: number;
-  question: string;
-  options: QuizOption[];
-  correct_answer: string;
-  explanation: string;
-  source_week: number;
-}
-
-export interface ShortAnswerQuestion {
-  question_number: number;
-  question: string;
-  model_answer: string;
-  grading_guidance: string;
-  source_week: number[];
-}
-
-export interface GeneratedQuiz {
-  title: string;
-  total_questions: number;
-  multiple_choice: MultipleChoiceQuestion[];
-  short_answer: ShortAnswerQuestion[];
-}
-
 export interface StepLogPayload {
-  node: "retrieve_deep_context" | "generate_weeks" | "generate_quiz" | "format_output" | string;
+  node: "retrieve_deep_context" | "generate_weeks" | "format_output" | string;
   status: "running" | "done" | "error";
   message: string;
   week?: number | null;
@@ -99,13 +74,11 @@ export interface StepLogPayload {
 
 export interface GenerateResultPayload {
   syllabus: GeneratedSyllabus;
-  quiz: GeneratedQuiz;
 }
 
 export interface GenerateDonePayload {
   total_duration_ms: number;
   weeks_generated: number;
-  quiz_questions: number;
 }
 
 export interface GenerateErrorPayload {

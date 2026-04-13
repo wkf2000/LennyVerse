@@ -17,10 +17,10 @@ export default function OutlineReview({
   return (
     <section className="rounded-2xl border border-indigo-100 bg-white/95 p-6 shadow-sm shadow-indigo-100/70">
       <header>
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-700">Outline Review ✍️</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-700">Your Playbook Outline</p>
         <h2 className="mt-2 text-xl font-semibold text-slate-900">{outline.topic}</h2>
         <p className="mt-2 text-sm text-slate-600">
-          {outline.num_weeks} weeks · {outline.difficulty} · {outline.corpus_coverage}
+          {outline.num_weeks} phases · {outline.difficulty} · {outline.corpus_coverage}
         </p>
       </header>
 
@@ -38,10 +38,10 @@ export default function OutlineReview({
           >
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-base font-semibold text-slate-900">
-                Week {week.week_number}: {week.theme}
+                Phase {week.week_number}: {week.theme}
               </h3>
               <span className="rounded-full bg-indigo-100 px-2 py-1 text-xs font-medium uppercase tracking-wide text-indigo-900">
-                {week.readings.length} reading{week.readings.length === 1 ? "" : "s"}
+                {week.readings.length} source{week.readings.length === 1 ? "" : "s"}
               </span>
             </div>
             <p className="mt-2 text-sm text-slate-700">{week.description}</p>
@@ -75,7 +75,7 @@ export default function OutlineReview({
           className="flex cursor-pointer items-center gap-2 rounded-full bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-indigo-50 shadow-sm shadow-indigo-300/40 transition-all duration-200 hover:bg-indigo-500 motion-safe:hover:-translate-y-0.5 hover:shadow-md hover:shadow-indigo-300/50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
         >
           {disabled ? <Spinner className="h-3.5 w-3.5" /> : null}
-          {disabled ? "Generating..." : "Approve and generate"}
+          {disabled ? "Generating..." : "Build my playbook"}
         </button>
       </div>
     </section>

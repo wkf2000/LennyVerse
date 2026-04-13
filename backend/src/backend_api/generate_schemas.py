@@ -9,6 +9,8 @@ class OutlineRequest(BaseModel):
     topic: str
     num_weeks: int = Field(default=8, ge=2, le=16)
     difficulty: Literal["intro", "intermediate", "advanced"] = "intermediate"
+    role: str | None = None
+    company_stage: str | None = None
 
     @field_validator("topic")
     @classmethod
@@ -47,6 +49,8 @@ class ExecuteRequest(BaseModel):
     num_weeks: int
     difficulty: str
     approved_outline: list[WeekOutline]
+    role: str | None = None
+    company_stage: str | None = None
 
 
 class GeneratedReading(BaseModel):
@@ -74,35 +78,6 @@ class GeneratedSyllabus(BaseModel):
     weeks: list[GeneratedWeek]
 
 
-class QuizOption(BaseModel):
-    label: str
-    text: str
-
-
-class MultipleChoiceQuestion(BaseModel):
-    question_number: int
-    question: str
-    options: list[QuizOption]
-    correct_answer: str
-    explanation: str
-    source_week: int
-
-
-class ShortAnswerQuestion(BaseModel):
-    question_number: int
-    question: str
-    model_answer: str
-    grading_guidance: str
-    source_week: list[int]
-
-
-class GeneratedQuiz(BaseModel):
-    title: str
-    total_questions: int
-    multiple_choice: list[MultipleChoiceQuestion]
-    short_answer: list[ShortAnswerQuestion]
-
-
 class StepLogPayload(BaseModel):
     node: str
     status: Literal["running", "done", "error"]
@@ -112,13 +87,11 @@ class StepLogPayload(BaseModel):
 
 class GenerateResultPayload(BaseModel):
     syllabus: GeneratedSyllabus
-    quiz: GeneratedQuiz
 
 
 class GenerateDonePayload(BaseModel):
     total_duration_ms: int
     weeks_generated: int
-    quiz_questions: int
 
 
 class GenerateErrorPayload(BaseModel):

@@ -7,7 +7,7 @@ from backend_api.main import app
 
 
 class _FakeGenerateService:
-    def generate_outline(self, topic: str, num_weeks: int, difficulty: str) -> OutlineResponse:
+    def generate_outline(self, topic: str, num_weeks: int, difficulty: str, role: str | None = None, company_stage: str | None = None) -> OutlineResponse:
         return OutlineResponse(
             topic=topic,
             num_weeks=num_weeks,
@@ -37,6 +37,8 @@ class _FakeGenerateService:
         num_weeks: int,
         difficulty: str,
         approved_outline: list[WeekOutline],
+        role: str | None = None,
+        company_stage: str | None = None,
     ):
         del num_weeks, approved_outline
         yield ("step_log", {"node": "retrieve_deep_context", "status": "done", "message": "Done"})
@@ -44,10 +46,9 @@ class _FakeGenerateService:
             "result",
             {
                 "syllabus": {"topic": topic, "difficulty": difficulty, "weeks": []},
-                "quiz": {"title": "Quiz", "total_questions": 0, "multiple_choice": [], "short_answer": []},
             },
         )
-        yield ("done", {"total_duration_ms": 100, "weeks_generated": 0, "quiz_questions": 0})
+        yield ("done", {"total_duration_ms": 100, "weeks_generated": 0})
 
 
 def _override_generate_service() -> _FakeGenerateService:

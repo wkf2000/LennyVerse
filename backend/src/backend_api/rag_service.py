@@ -10,7 +10,7 @@ import psycopg.errors
 from openai import OpenAI
 
 from backend_api.config import Settings
-from backend_api.llm_client import ChatCompletionStreamer, LlmStreamTimeoutError
+from backend_api.llm_client import ChatCompletionStreamer, LlmStreamTimeoutError, build_embedding_client, default_embed_query
 from backend_api.rag_repository import RagChunkHit, RagRepository, RagRetrievalFilters
 from backend_api.rag_schemas import ChatMessage, ChatRequest, RagSearchFilters, SearchResponse, SearchResult
 
@@ -66,26 +66,7 @@ def normalize_cosine_distance_score(distance: float) -> float:
     return max(0.0, min(1.0, raw))
 
 
-def _build_embedding_client(settings: Settings) -> OpenAI:
-    """
-    Embeddings use the Ollama OpenAI-compatible endpoint (not the chat LLM provider).
-    """
-    base = (settings.ollama_embed_base_url or "").strip()
-    if not base:
-        msg = "OLLAMA_EMBED_BASE_URL is required for RAG search when no embed_query override is provided."
-        raise ValueError(msg)
-    return OpenAI(
-        api_key=settings.embedding_api_key,
-        base_url=base.rstrip("/"),
-    )
 
-
-def _default_embed_query(settings: Settings, client: OpenAI) -> Callable[[str], list[float]]:
-    def embed(text: str) -> list[float]:
-        response = client.embeddings.create(model=settings.embedding_model, input=text)
-        return list(response.data[0].embedding)
-
-    return embed
 
 
 def _excerpt(text: str, max_chars: int = 400) -> str:
@@ -242,8 +223,8 @@ class RagService:
         if embed_query is not None:
             self._embed_query = embed_query
         else:
-            self._embedding_client = _build_embedding_client(settings)
-            self._embed_query = _default_embed_query(settings, self._embedding_client)
+            self._embedding_client = build_embedding_client(settings)
+            self._embed_query = default_embed_query(settings, self._embedding_client)
 
     def search(
         self,
@@ -334,8 +315,8 @@ class RagService:
         source_count = len(retrieval.results)
         sources_block = _build_retrieval_context_block(retrieval.results)
         system_prompt = (
-            "You are a helpful assistant for LennyVerse, an educational platform focused on "
-            "product management, growth, startups, and leadership based on Lenny Rachitsky's archive.\n\n"
+            "You are a helpful assistant for Lenny's Second Brain, a knowledge platform for PMs, "
+            "founders, and operators based on Lenny Rachitsky's newsletter and podcast archive.\n\n"
             "GUARDRAILS:\n"
             "- Only answer questions related to product management, growth, startups, leadership, "
             "entrepreneurship, and topics covered in Lenny's archive.\n"
@@ -349,21 +330,7 @@ class RagService:
             "- Answer using ONLY the provided sources. When you rely on a source, "
             "include a marker exactly like [cite:SOURCE_ID] where SOURCE_ID matches "
             "one of the provided source ids.\n"
-            "- If the sources do not contain enough information, say so honestly.\n\n"
-            "RESPONSIBLE AI — GONZAGA MISSION REFLECTION:\n"
-            "After your main answer, if the question touches on topics where ethical reflection "
-            "is relevant (e.g., leadership, hiring, culture, user trust, data ethics, DEI, "
-            "community impact, or decision-making that affects people), append a short section "
-            "formatted exactly as:\n\n"
-            "---\n"
-            "**🌱 Gonzaga Mission Reflection**\n"
-            "[1–3 sentences connecting the topic to Gonzaga University's Jesuit values: "
-            "cura personalis (care for the whole person), ethical use of technology, "
-            "service to others, pursuit of justice, and forming people for others. "
-            "Frame it as a reflective prompt or actionable suggestion for educators and learners.]\n\n"
-            "Rules for this section:\n"
-            "- Keep it concise and thoughtful, never preachy.\n"
-            "- Do not cite sources in this section — it is a values-based reflection, not a factual claim."
+            "- If the sources do not contain enough information, say so honestly."
         )
         user_prompt = f"Question:\n{query}\n\nSources:\n{sources_block}"
 

@@ -1,11 +1,9 @@
 import { useCallback, useMemo, useState } from "react";
 
-import { postInfographic, postOutline, streamExecute } from "../api/generateApi";
+import { postOutline, sharePlaybook, streamExecute } from "../api/generateApi";
 import GenerateInputForm from "../components/generate/GenerateInputForm";
 import GenerationProgress from "../components/generate/GenerationProgress";
-import InfographicPopup from "../components/generate/InfographicPopup";
 import OutlineReview from "../components/generate/OutlineReview";
-import QuizOutput from "../components/generate/QuizOutput";
 import SyllabusOutput from "../components/generate/SyllabusOutput";
 import type {
   DifficultyLevel,
@@ -24,18 +22,19 @@ export default function GenerateWorkspace(): JSX.Element {
   const [result, setResult] = useState<GenerateResultPayload | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
-  const [infographicHtml, setInfographicHtml] = useState<string | null>(null);
-  const [infographicLoading, setInfographicLoading] = useState(false);
-
+  const [shareStatus, setShareStatus] = useState<"idle" | "sharing" | "shared" | "error">("idle");
+  const [shareSlug, setShareSlug] = useState<string | null>(null);
+  const [persona, setPersona] = useState<{ role?: string; companyStage?: string }>({});
   const canShowOutput = useMemo(() => phase === "complete" && result !== null, [phase, result]);
 
-  const handleGenerateOutline = useCallback(async (topic: string, numWeeks: number, difficulty: DifficultyLevel) => {
+  const handleGenerateOutline = useCallback(async (topic: string, numWeeks: number, difficulty: DifficultyLevel, role?: string, companyStage?: string) => {
     setBusy(true);
     setErrorMessage(undefined);
     setResult(null);
     setSteps([]);
+    setPersona({ role, companyStage });
     try {
-      const response = await postOutline({ topic, num_weeks: numWeeks, difficulty });
+      const response = await postOutline({ topic, num_weeks: numWeeks, difficulty, role, company_stage: companyStage });
       setOutline(response);
       setPhase("outline");
     } catch (error: unknown) {
@@ -63,6 +62,8 @@ export default function GenerateWorkspace(): JSX.Element {
             num_weeks: outline.num_weeks,
             difficulty: outline.difficulty,
             approved_outline: approvedOutline,
+            role: persona.role,
+            company_stage: persona.companyStage,
           },
           {
             onStepLog: (payload) => setSteps((current) => [...current, payload]),
@@ -81,17 +82,17 @@ export default function GenerateWorkspace(): JSX.Element {
     [outline]
   );
 
-  const handleGenerateInfographic = useCallback(async () => {
+  const handleShare = useCallback(async () => {
     if (!result) return;
-    setInfographicLoading(true);
-    setErrorMessage(undefined);
+    setShareStatus("sharing");
     try {
-      const html = await postInfographic(result.syllabus);
-      setInfographicHtml(html);
-    } catch (error: unknown) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to generate infographic.");
-    } finally {
-      setInfographicLoading(false);
+      const slug = await sharePlaybook(result);
+      setShareSlug(slug);
+      setShareStatus("shared");
+      const url = `${window.location.origin}/playbook/${slug}`;
+      await navigator.clipboard.writeText(url);
+    } catch {
+      setShareStatus("error");
     }
   }, [result]);
 
@@ -102,8 +103,9 @@ export default function GenerateWorkspace(): JSX.Element {
     setResult(null);
     setErrorMessage(undefined);
     setBusy(false);
-    setInfographicHtml(null);
-    setInfographicLoading(false);
+    setShareStatus("idle");
+    setShareSlug(null);
+    setPersona({});
   }, []);
 
   return (
@@ -128,26 +130,32 @@ export default function GenerateWorkspace(): JSX.Element {
       {canShowOutput && result ? (
         <>
           <GenerationProgress active={false} steps={steps} />
-          <button
-            type="button"
-            onClick={handleGenerateInfographic}
-            disabled={infographicLoading}
-            className="inline-flex cursor-pointer items-center gap-2 self-start rounded-full border border-amber-300 bg-amber-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-amber-800 transition-all duration-200 motion-safe:hover:-translate-y-0.5 hover:bg-amber-100 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {infographicLoading ? (
-              <>
-                <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                Generating infographic...
-              </>
-            ) : (
-              "Generate infographic"
-            )}
-          </button>
           <SyllabusOutput syllabus={result.syllabus} />
-          <QuizOutput quiz={result.quiz} />
+          <div className="flex items-center gap-3">
+            {shareStatus === "shared" && shareSlug ? (
+              <div className="flex items-center gap-2 rounded-full border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-800">
+                <span>✓ Copied!</span>
+                <span className="font-mono text-emerald-600">{window.location.origin}/playbook/{shareSlug}</span>
+              </div>
+            ) : shareStatus === "error" ? (
+              <button
+                type="button"
+                onClick={handleShare}
+                className="cursor-pointer rounded-full border border-rose-300 bg-rose-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-rose-700 transition-all hover:bg-rose-100"
+              >
+                Couldn&apos;t share — try again
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleShare}
+                disabled={shareStatus === "sharing"}
+                className="cursor-pointer rounded-full border border-indigo-300 bg-indigo-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-indigo-800 transition-all duration-200 hover:bg-indigo-100 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {shareStatus === "sharing" ? "Sharing..." : "Share this playbook"}
+              </button>
+            )}
+          </div>
           <div className="flex justify-end">
             <button
               type="button"
@@ -157,10 +165,6 @@ export default function GenerateWorkspace(): JSX.Element {
               Start over
             </button>
           </div>
-
-          {infographicHtml ? (
-            <InfographicPopup html={infographicHtml} onClose={() => setInfographicHtml(null)} />
-          ) : null}
         </>
       ) : null}
     </div>

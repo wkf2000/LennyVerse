@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import html as html_lib
+import json
 import logging
+import secrets
 import sys
 from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
 from typing import Annotated
 
+import psycopg
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend_api.config import Settings, get_settings
@@ -220,6 +224,8 @@ def post_generate_outline(
         topic=body.topic,
         num_weeks=body.num_weeks,
         difficulty=body.difficulty,
+        role=body.role,
+        company_stage=body.company_stage,
     )
 
 
@@ -234,6 +240,8 @@ def post_generate_execute(
             num_weeks=body.num_weeks,
             difficulty=body.difficulty,
             approved_outline=body.approved_outline,
+            role=body.role,
+            company_stage=body.company_stage,
         ):
             yield format_sse_event(event_name, payload)
 
@@ -247,6 +255,68 @@ def post_generate_infographic(
 ) -> InfographicResponse:
     html = service.generate_infographic(syllabus=body.syllabus)
     return InfographicResponse(html=html)
+
+
+@app.post("/api/playbooks/share")
+def post_share_playbook(
+    body: dict,
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, str]:
+    payload_bytes = json.dumps(body).encode()
+    if len(payload_bytes) > 500_000:
+        raise HTTPException(status_code=413, detail="Payload too large (max 500KB).")
+
+    # Generate a short memorable slug
+    topic_part = (body.get("syllabus", {}).get("topic", "") or "playbook").lower()
+    topic_slug = "-".join(topic_part.split()[:3])[:30]
+    # Keep only alphanumeric and hyphens
+    topic_slug = "".join(c if c.isalnum() or c == "-" else "" for c in topic_slug)
+    random_suffix = secrets.token_hex(2)
+    share_slug = f"{topic_slug}-{random_suffix}" if topic_slug else random_suffix
+
+    db_url = app_settings.require_db_url()
+    with psycopg.connect(db_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO playbook_shares (share_slug, playbook)
+                VALUES (%(slug)s, %(playbook)s)
+                ON CONFLICT (share_slug) DO NOTHING
+                RETURNING share_slug
+                """,
+                {"slug": share_slug, "playbook": json.dumps(body)},
+            )
+            row = cur.fetchone()
+            if row is None:
+                # Slug collision — add more entropy
+                share_slug = f"{topic_slug}-{secrets.token_hex(4)}"
+                cur.execute(
+                    """
+                    INSERT INTO playbook_shares (share_slug, playbook)
+                    VALUES (%(slug)s, %(playbook)s)
+                    """,
+                    {"slug": share_slug, "playbook": json.dumps(body)},
+                )
+        conn.commit()
+    return {"slug": share_slug}
+
+
+@app.get("/api/playbooks/share/{slug}")
+def get_shared_playbook(
+    slug: str,
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> dict:
+    db_url = app_settings.require_db_url()
+    with psycopg.connect(db_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT playbook FROM playbook_shares WHERE share_slug = %(slug)s",
+                {"slug": slug},
+            )
+            row = cur.fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Playbook not found.")
+    return json.loads(row[0]) if isinstance(row[0], str) else row[0]
 
 
 @app.get("/api/stats/topic-trends", response_model=TopicTrendsResponse)
@@ -281,6 +351,21 @@ _FRONTEND_DIST_DIR = Path(__file__).resolve().parents[3] / "frontend" / "dist"
 _FRONTEND_INDEX_FILE = _FRONTEND_DIST_DIR / "index.html"
 _RESERVED_NON_SPA_PREFIXES = {"api", "docs", "redoc", "openapi.json", "health"}
 
+
+def _inject_og_tags(index_html: str, title: str, description: str, url: str) -> str:
+    esc = html_lib.escape
+    og_tags = (
+        f'<meta property="og:title" content="{esc(title)}" />\n'
+        f'<meta property="og:description" content="{esc(description)}" />\n'
+        f'<meta property="og:url" content="{esc(url)}" />\n'
+        '<meta property="og:type" content="article" />\n'
+        f'<meta name="twitter:card" content="summary" />\n'
+        f'<meta name="twitter:title" content="{esc(title)}" />\n'
+        f'<meta name="twitter:description" content="{esc(description)}" />\n'
+    )
+    return index_html.replace("</head>", f"{og_tags}</head>", 1)
+
+
 logger.info("Registered API routes: %s", [r.path for r in app.routes if hasattr(r, "path")])
 
 if _FRONTEND_DIST_DIR.exists() and _FRONTEND_INDEX_FILE.exists():
@@ -289,6 +374,38 @@ if _FRONTEND_DIST_DIR.exists() and _FRONTEND_INDEX_FILE.exists():
     if assets_dir.exists():
         app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
         logger.info("Mounted /assets static files directory")
+
+    @app.get("/playbook/{slug}", include_in_schema=False)
+    def serve_shared_playbook_with_og(
+        slug: str,
+        app_settings: Annotated[Settings, Depends(get_settings)],
+    ) -> HTMLResponse:
+        index_html = _FRONTEND_INDEX_FILE.read_text()
+        try:
+            db_url = app_settings.require_db_url()
+            with psycopg.connect(db_url) as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT playbook FROM playbook_shares WHERE share_slug = %(slug)s",
+                        {"slug": slug},
+                    )
+                    row = cur.fetchone()
+            if row is not None:
+                playbook = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+                syllabus = playbook.get("syllabus", {})
+                topic = syllabus.get("topic", "Playbook")
+                difficulty = syllabus.get("difficulty", "")
+                num_phases = len(syllabus.get("weeks", []))
+                title = f"{topic} — Lenny's Second Brain"
+                description = (
+                    f"A {num_phases}-phase {difficulty} playbook on {topic}, "
+                    "built from 638 episodes of Lenny's Newsletter and podcast."
+                )
+                url = f"/playbook/{slug}"
+                index_html = _inject_og_tags(index_html, title, description, url)
+        except Exception:  # noqa: BLE001
+            logger.debug("Could not inject OG tags for slug=%s, serving plain SPA", slug)
+        return HTMLResponse(content=index_html)
 
     @app.get("/", include_in_schema=False)
     def serve_frontend_root() -> FileResponse:

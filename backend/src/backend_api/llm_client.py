@@ -1,12 +1,34 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Any, Protocol, runtime_checkable
 
 import httpx
 from openai import APITimeoutError, OpenAI
 
 from backend_api.config import Settings
+
+
+def build_embedding_client(settings: Settings) -> OpenAI:
+    base = (settings.ollama_embed_base_url or "").strip()
+    if not base:
+        msg = "OLLAMA_EMBED_BASE_URL is required for embedding queries when no embed_query override is provided."
+        raise ValueError(msg)
+    return OpenAI(
+        api_key=settings.embedding_api_key,
+        base_url=base.rstrip("/"),
+    )
+
+
+def default_embed_query(settings: Settings, client: OpenAI | None = None) -> Callable[[str], list[float]]:
+    if client is None:
+        client = build_embedding_client(settings)
+
+    def embed(text: str) -> list[float]:
+        response = client.embeddings.create(model=settings.embedding_model, input=text)
+        return list(response.data[0].embedding)
+
+    return embed
 
 
 @runtime_checkable

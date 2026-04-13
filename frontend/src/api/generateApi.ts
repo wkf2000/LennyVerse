@@ -147,3 +147,24 @@ export async function streamExecute(
 
   await consumeSseReadableStream(response.body, handlers);
 }
+
+export async function sharePlaybook(payload: GenerateResultPayload): Promise<string> {
+  const response = await fetch(`${API_BASE_URL}/api/playbooks/share`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw new Error(`Share failed (${response.status})`);
+  }
+  const data = (await response.json()) as { slug: string };
+  return data.slug;
+}
+
+export async function fetchSharedPlaybook(slug: string): Promise<GenerateResultPayload> {
+  const response = await fetch(`${API_BASE_URL}/api/playbooks/share/${encodeURIComponent(slug)}`);
+  if (!response.ok) {
+    throw new Error(response.status === 404 ? "Playbook not found" : `Failed to load playbook (${response.status})`);
+  }
+  return (await response.json()) as GenerateResultPayload;
+}

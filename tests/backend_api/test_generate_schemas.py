@@ -125,42 +125,4 @@ def test_generated_week_status_values() -> None:
     assert week.status == "complete"
 
 
-def test_quiz_schema_structure() -> None:
-    from backend_api.generate_schemas import (
-        GeneratedQuiz,
-        MultipleChoiceQuestion,
-        QuizOption,
-        ShortAnswerQuestion,
-    )
 
-    quiz = GeneratedQuiz(
-        title="PLG Quiz",
-        total_questions=2,
-        multiple_choice=[
-            MultipleChoiceQuestion(
-                question_number=1,
-                question="What is PLG?",
-                options=[
-                    QuizOption(label="A", text="Sales strategy"),
-                    QuizOption(label="B", text="Product-led model"),
-                    QuizOption(label="C", text="Pricing strategy"),
-                    QuizOption(label="D", text="Marketing approach"),
-                ],
-                correct_answer="B",
-                explanation="PLG is defined as...",
-                source_week=1,
-            )
-        ],
-        short_answer=[
-            ShortAnswerQuestion(
-                question_number=2,
-                question="Compare freemium and reverse trial.",
-                model_answer="Freemium works when...",
-                grading_guidance="Full credit: references both.",
-                source_week=[1],
-            )
-        ],
-    )
-    assert quiz.total_questions == 2
-    assert len(quiz.multiple_choice) == 1
-    assert len(quiz.short_answer) == 1
