@@ -15,8 +15,8 @@ const INITIAL_GRAPH: GraphResponse = {
 
 const NODE_TYPE_ORDER: NodeType[] = ["guest", "topic", "content", "concept"];
 const MAX_RELATED_CONTENT_ITEMS = 5;
-const VIEWS = ["home", "graph", "explore", "playbook", "stats"] as const;
-const NAV_VIEWS = ["home", "graph", "explore", "playbook", "stats"] as const;
+const VIEWS = ["home", "playbook", "graph", "explore", "stats"] as const;
+const NAV_VIEWS = ["home", "playbook", "graph", "explore", "stats"] as const;
 
 type View = (typeof VIEWS)[number];
 
@@ -30,9 +30,9 @@ const VIEW_PATHS: Record<View, string> = {
 const VIEW_LABELS: Record<View, string> = {
   home: "home",
   graph: "graph",
-  explore: "explore",
+  explore: "ask",
   playbook: "playbook",
-  stats: "stats",
+  stats: "about",
 };
 
 function normalizePathname(pathname: string): string {
